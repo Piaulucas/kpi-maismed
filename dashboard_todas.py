@@ -25,10 +25,10 @@ DB_PASSWORD = st.secrets.get("database", {}).get("password", os.getenv("DB_PASSW
 def carregar_dados(ano, mes, empresas):
     query = """
         SELECT * FROM kpi_historico
-        WHERE EXTRACT(YEAR FROM data_registro) = %s
-          AND EXTRACT(MONTH FROM data_registro) = %s
+        WHERE EXTRACT(YEAR FROM data_corte) = %s
+          AND EXTRACT(MONTH FROM data_corte) = %s
           AND empresa = ANY(%s)
-        ORDER BY data_registro ASC
+        ORDER BY data_corte ASC
     """
     try:
         conn = psycopg2.connect(host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
@@ -79,7 +79,7 @@ for i, (chave, info) in enumerate(EMPRESAS.items()):
     if df_emp.empty:
         cols[i].warning(f"{info['nome']}\nSem dados")
         continue
-    ultimo = df_emp.sort_values("data_registro").iloc[-1]
+    ultimo = df_emp.sort_values("data_corte").iloc[-1]
     with cols[i]:
         st.markdown(f"**{info['nome']}**")
         st.metric("💰 Valor Consolidado", brl(ultimo['valor_consolidado']))
@@ -95,15 +95,15 @@ for i, (chave, info) in enumerate(EMPRESAS.items()):
 st.divider()
 
 # ── Gráfico comparativo
-st.markdown("### 📅 Evolução — Faturamento/dia")
+st.markdown("### 📅 Evolução — Faturamento Acumulado do Mês")
 fig = go.Figure()
 for chave, info in EMPRESAS.items():
-    df_emp = df[df['empresa'] == chave].sort_values("data_registro")
+    df_emp = df[df['empresa'] == chave].sort_values("data_corte")
     if df_emp.empty: continue
     df_emp = df_emp.copy()
-    df_emp['data_label'] = pd.to_datetime(df_emp['data_registro']).dt.strftime("%d/%m")
+    df_emp['data_label'] = pd.to_datetime(df_emp['data_corte']).dt.strftime("%d/%m")
     fig.add_trace(go.Scatter(
-        x=df_emp['data_label'], y=df_emp['faturamento_dia'],
+        x=df_emp['data_label'], y=df_emp['valor_consolidado'],
         name=info['nome'], mode="lines+markers",
         line=dict(color=info['cor'], width=2),
     ))
@@ -118,7 +118,7 @@ empresas_nomes, previsoes, cores = [], [], []
 for chave, info in EMPRESAS.items():
     df_emp = df[df['empresa'] == chave]
     if df_emp.empty: continue
-    ultimo = df_emp.sort_values("data_registro").iloc[-1]
+    ultimo = df_emp.sort_values("data_corte").iloc[-1]
     empresas_nomes.append(info['nome'])
     previsoes.append(float(ultimo['previsao_faturamento']))
     cores.append(info['cor'])
