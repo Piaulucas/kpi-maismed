@@ -82,12 +82,15 @@ for i, (chave, info) in enumerate(EMPRESAS.items()):
     ultimo = df_emp.sort_values("data_registro").iloc[-1]
     with cols[i]:
         st.markdown(f"**{info['nome']}**")
-        st.metric("💰 Valor", brl(ultimo['valor_consolidado']))
-        st.metric("🏥 Adulto", f"{int(ultimo['remocoes_adulto'])} rem", delta=f"{int(ultimo['remocoes_neonatal'])} neo", delta_color="off")
-        st.metric("🚑 Rem/dia", num(ultimo['remocoes_dia']))
+        st.metric("💰 Valor Consolidado", brl(ultimo['valor_consolidado']))
+        st.metric("💵 Faturamento/dia", brl(ultimo['faturamento_dia']))
+        st.metric("📈 Prev. Faturamento", brl(ultimo['previsao_faturamento']))
+        st.metric("🚑 Adulto", int(ultimo['remocoes_adulto']))
+        st.metric("👶 Neonatal", int(ultimo['remocoes_neonatal']))
+        st.metric("📦 Prev. Remoções", int(ultimo['previsao_remocoes']))
+        st.metric("📊 Rem/dia", num(ultimo['remocoes_dia']))
         st.metric("🛣️ Km/dia", num(ultimo['km_dia']))
-        st.metric("💵 Ticket", brl(ultimo['ticket_medio']))
-        st.metric("📈 Prev. Fat.", brl(ultimo['previsao_faturamento']))
+        st.metric("🎫 Ticket Médio", brl(ultimo['ticket_medio']))
 
 st.divider()
 
