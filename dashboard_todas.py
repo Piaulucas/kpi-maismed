@@ -101,7 +101,9 @@ for chave, info in EMPRESAS.items():
     df_emp = df[df['empresa'] == chave].sort_values("data_corte")
     if df_emp.empty: continue
     df_emp = df_emp.copy()
-    df_emp['data_label'] = pd.to_datetime(df_emp['data_corte']).dt.strftime("%d/%m")
+    df_emp['data_corte'] = pd.to_datetime(df_emp['data_corte'])
+    df_emp = df_emp.sort_values('data_corte')
+    df_emp['data_label'] = df_emp['data_corte'].dt.strftime('%d/%m')
     fig.add_trace(go.Scatter(
         x=df_emp['data_label'], y=df_emp['valor_consolidado'],
         name=info['nome'], mode="lines+markers",
