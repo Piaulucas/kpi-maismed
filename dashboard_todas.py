@@ -5,14 +5,14 @@ import plotly.graph_objects as go
 from datetime import date
 import os
 
-st.set_page_config(page_title="KPI Mensal — Todas", page_icon="🏥", layout="wide")
+st.set_page_config(page_title="KPI Dashboard — Todas as Empresas", page_icon="🏥", layout="wide")
 
 EMPRESAS = {
-    'sert':      {'nome': 'Sert Med',            'cor': '#1c2d9d'},
-    'humanize':  {'nome': 'Humanize Life Care',  'cor': '#f48031'},
+    'sert':      {'nome': 'Sert Med',           'cor': '#1c2d9d'},
     'maismed':   {'nome': 'Mais Med',           'cor': '#fe0000'},
-    'alfa':      {'nome': 'Alfa Saúde',          'cor': '#0f9ca3'},
-    'falcon':    {'nome': 'Falcon',              'cor': '#010f72'},
+    'falcon':    {'nome': 'Falcon',             'cor': '#010f72'},
+    'humanize':  {'nome': 'Humanize Life Care', 'cor': '#f48031'},
+    'alfa':      {'nome': 'Alfa Saúde',         'cor': '#0f9ca3'},
 }
 
 DB_HOST     = st.secrets.get("database", {}).get("host",     os.getenv("DB_HOST",     "aws-1-us-east-1.pooler.supabase.com"))
@@ -50,7 +50,7 @@ def num(v, d=1):
 
 # ── Header
 st.markdown("## 🏥 Dashboard KPI — Todas as Empresas")
-st.caption("Atualização automática todos os dias as 20:30h · Fonte: banco PostgreSQL Supabase")
+st.caption("Atualização automática a cada 5 minutos · Fonte: banco PostgreSQL Supabase")
 st.divider()
 
 # ── Seletor
@@ -105,7 +105,7 @@ for chave, info in EMPRESAS.items():
     df_emp = df_emp.sort_values('data_corte')
     df_emp['data_label'] = df_emp['data_corte'].dt.strftime('%d/%m')
     fig.add_trace(go.Scatter(
-        x=df_emp['data_label'], y=df_emp['valor_consolidado'],
+        x=df_emp['data_corte'], y=df_emp['valor_consolidado'],
         name=info['nome'], mode="lines+markers",
         line=dict(color=info['cor'], width=2),
     ))
