@@ -5,14 +5,14 @@ import plotly.graph_objects as go
 from datetime import date
 import os
 
-st.set_page_config(page_title="KPI Dashboard — Todas as Empresas", page_icon="🏥", layout="wide")
+st.set_page_config(page_title="KPI Mensal — Todas", page_icon="🏥", layout="wide")
 
 EMPRESAS = {
-    'maismed':   {'nome': 'Mais Med',           'cor': '#1f77b4'},
-    'alfa':      {'nome': 'Alfa Saúde',          'cor': '#ff7f0e'},
-    'humanize':  {'nome': 'Humanize Life Care',  'cor': '#2ca02c'},
-    'sert':      {'nome': 'Sert Med',            'cor': '#d62728'},
-    'falcon':    {'nome': 'Falcon',              'cor': '#9467bd'},
+    'sert':      {'nome': 'Sert Med',            'cor': '#1c2d9d'},
+    'humanize':  {'nome': 'Humanize Life Care',  'cor': '#f48031'},
+    'maismed':   {'nome': 'Mais Med',           'cor': '#fe0000'},
+    'alfa':      {'nome': 'Alfa Saúde',          'cor': '#0f9ca3'},
+    'falcon':    {'nome': 'Falcon',              'cor': '#010f72'},
 }
 
 DB_HOST     = st.secrets.get("database", {}).get("host",     os.getenv("DB_HOST",     "aws-1-us-east-1.pooler.supabase.com"))
@@ -50,7 +50,7 @@ def num(v, d=1):
 
 # ── Header
 st.markdown("## 🏥 Dashboard KPI — Todas as Empresas")
-st.caption("Atualização automática a cada 5 minutos · Fonte: banco PostgreSQL Supabase")
+st.caption("Atualização automática todos os dias as 20:30h · Fonte: banco PostgreSQL Supabase")
 st.divider()
 
 # ── Seletor
