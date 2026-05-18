@@ -5,6 +5,9 @@ import sys
 import psycopg2
 import glob
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── CONFIGURAÇÃO ─────────────────────────────────────────────────────────────
 EMPRESAS = {
@@ -30,11 +33,15 @@ EMPRESAS = {
     },
 }
 
-DB_HOST = 'aws-1-us-east-1.pooler.supabase.com'
-DB_PORT = '5432'
-DB_NAME = 'postgres'
-DB_USER = 'postgres.ltfvmvpijonkhmuhzflk'
-DB_PASS = 'REDACTED'
+DB_HOST = os.getenv('DB_HOST')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DB_NAME = os.getenv('DB_NAME')
+DB_USER = os.getenv('DB_USER')
+DB_PASS = os.getenv('DB_PASS')
+
+if not all([DB_HOST, DB_NAME, DB_USER, DB_PASS]):
+    print("❌ Variáveis de ambiente do banco não configuradas. Verifique o arquivo .env")
+    sys.exit(1)
 
 # ── LEITURA ───────────────────────────────────────────────────────────────────
 def coluna_km(df):
@@ -93,20 +100,17 @@ if df_total.empty:
 col_km = coluna_km(df_total)
 dias_no_mes = calendar.monthrange(df_total['DATA'].max().year, df_total['DATA'].max().month)[1]
 
-# ── CONECTAR AO BANCO ────────────────────────────────────────────────────────
 conn = psycopg2.connect(
     host=DB_HOST, port=DB_PORT,
     dbname=DB_NAME, user=DB_USER, password=DB_PASS
 )
 cursor = conn.cursor()
 
-# Busca datas já existentes no banco para essa empresa
 cursor.execute(
     'SELECT data_corte FROM kpi_historico WHERE empresa = %s', (chave,)
 )
 datas_existentes = {str(r[0]) for r in cursor.fetchall()}
 
-# ── PROCESSAR DIA A DIA ───────────────────────────────────────────────────────
 dias_planilha = sorted(df_total['DATA'].dt.date.unique())
 inseridos = 0
 ignorados = 0
@@ -117,24 +121,20 @@ for dia in dias_planilha:
         ignorados += 1
         continue
 
-    # Dados do dia específico
     df_dia_adulto = df_adulto[df_adulto['DATA'].dt.date == dia]
     df_dia_neo    = df_neo[df_neo['DATA'].dt.date == dia]
     df_dia        = pd.concat([df_dia_adulto, df_dia_neo], ignore_index=True)
 
-    # KPIs acumulados até esse dia (para previsão)
     df_ate_dia = df_total[df_total['DATA'].dt.date <= dia]
-    dias_uteis_ate = df_ate_dia['DATA'].dt.date.nunique()
+    dias_uteis = df_ate_dia['DATA'].dt.date.nunique()
 
-    valor_consolidado  = float(df_ate_dia['VALOR TOTAL'].sum())
-    km_dia             = float(df_dia[col_km].sum())
-    remocoes_dia       = float(len(df_dia))
-    faturamento_dia    = float(df_dia['VALOR TOTAL'].sum())
-    ticket_medio       = float(df_dia['VALOR TOTAL'].mean()) if len(df_dia) > 0 else 0.0
-
-    # Previsão baseada na média acumulada até o dia
-    media_rem_dia  = float(df_ate_dia['VALOR TOTAL'].count() / dias_uteis_ate)
-    media_fat_dia  = float(df_ate_dia['VALOR TOTAL'].sum() / dias_uteis_ate)
+    valor_consolidado    = float(df_ate_dia['VALOR TOTAL'].sum())
+    km_dia               = float(df_dia[col_km].sum())
+    remocoes_dia         = float(len(df_dia))
+    faturamento_dia      = float(df_dia['VALOR TOTAL'].sum())
+    ticket_medio         = float(df_dia['VALOR TOTAL'].mean()) if len(df_dia) > 0 else 0.0
+    media_rem_dia        = float(df_ate_dia['VALOR TOTAL'].count() / dias_uteis)
+    media_fat_dia        = float(df_ate_dia['VALOR TOTAL'].sum() / dias_uteis)
     previsao_remocoes    = int(round(media_rem_dia * dias_no_mes))
     previsao_faturamento = float(round(media_fat_dia * dias_no_mes))
 

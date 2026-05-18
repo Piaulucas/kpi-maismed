@@ -4,6 +4,9 @@ import calendar
 import psycopg2
 import glob
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ── CONFIGURAÇÃO ─────────────────────────────────────────────────────────────
 EMPRESAS = {
@@ -29,11 +32,15 @@ EMPRESAS = {
     },
 }
 
-DB_HOST = 'aws-1-us-east-1.pooler.supabase.com'
-DB_PORT = '5432'
-DB_NAME = 'postgres'
-DB_USER = 'postgres.ltfvmvpijonkhmuhzflk'
-DB_PASS = 'REDACTED'
+DB_HOST = os.getenv('DB_HOST')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DB_NAME = os.getenv('DB_NAME')
+DB_USER = os.getenv('DB_USER')
+DB_PASS = os.getenv('DB_PASS')
+
+if not all([DB_HOST, DB_NAME, DB_USER, DB_PASS]):
+    print("❌ Variáveis de ambiente do banco não configuradas. Verifique o arquivo .env")
+    import sys; sys.exit(1)
 
 # ── LEITURA ───────────────────────────────────────────────────────────────────
 def coluna_km(df):
@@ -80,7 +87,6 @@ conn = psycopg2.connect(
 )
 cursor = conn.cursor()
 
-# Busca todas as datas já existentes no banco
 cursor.execute('SELECT empresa, data_corte FROM kpi_historico')
 datas_existentes = {(r[0], str(r[1])) for r in cursor.fetchall()}
 print(f"📊 Registros já no banco: {len(datas_existentes)}\n")
@@ -115,9 +121,6 @@ for chave, empresa in EMPRESAS.items():
             continue
 
         col_km = coluna_km(df_total)
-        if col_km is None:
-            print(f"    ⚠️  Coluna KM não encontrada — usando 0")
-
         dias = sorted(df_total['DATA'].dt.date.unique())
 
         for dia in dias:
@@ -128,22 +131,20 @@ for chave, empresa in EMPRESAS.items():
 
             try:
                 df_dia_adulto = df_adulto[df_adulto['DATA'].dt.date == dia] if not df_adulto.empty else pd.DataFrame()
-                df_dia_neo    = df_neo[df_neo['DATA'].dt.date == dia]    if not df_neo.empty    else pd.DataFrame()
+                df_dia_neo    = df_neo[df_neo['DATA'].dt.date == dia]       if not df_neo.empty    else pd.DataFrame()
                 df_dia        = pd.concat([df_dia_adulto, df_dia_neo], ignore_index=True)
 
-                # Acumulado até esse dia (para previsão)
-                df_ate_dia   = df_total[df_total['DATA'].dt.date <= dia]
-                dias_uteis   = df_ate_dia['DATA'].dt.date.nunique()
-                dias_no_mes  = calendar.monthrange(dia.year, dia.month)[1]
-
-                valor_consolidado  = float(df_ate_dia['VALOR TOTAL'].sum())
-                faturamento_dia    = float(df_dia['VALOR TOTAL'].sum())
-                km_dia             = float(df_dia[col_km].sum()) if col_km else 0.0
-                remocoes_dia       = float(len(df_dia))
-                ticket_medio       = float(df_dia['VALOR TOTAL'].mean()) if len(df_dia) > 0 else 0.0
-                media_rem_dia      = float(len(df_ate_dia) / dias_uteis)
-                media_fat_dia      = float(df_ate_dia['VALOR TOTAL'].sum() / dias_uteis)
-                previsao_remocoes  = int(round(media_rem_dia * dias_no_mes))
+                df_ate_dia           = df_total[df_total['DATA'].dt.date <= dia]
+                dias_uteis           = df_ate_dia['DATA'].dt.date.nunique()
+                dias_no_mes          = calendar.monthrange(dia.year, dia.month)[1]
+                valor_consolidado    = float(df_ate_dia['VALOR TOTAL'].sum())
+                faturamento_dia      = float(df_dia['VALOR TOTAL'].sum())
+                km_dia               = float(df_dia[col_km].sum()) if col_km else 0.0
+                remocoes_dia         = float(len(df_dia))
+                ticket_medio         = float(df_dia['VALOR TOTAL'].mean()) if len(df_dia) > 0 else 0.0
+                media_rem_dia        = float(len(df_ate_dia) / dias_uteis)
+                media_fat_dia        = float(df_ate_dia['VALOR TOTAL'].sum() / dias_uteis)
+                previsao_remocoes    = int(round(media_rem_dia * dias_no_mes))
                 previsao_faturamento = float(round(media_fat_dia * dias_no_mes))
 
                 cursor.execute('''
@@ -153,18 +154,9 @@ for chave, empresa in EMPRESAS.items():
                          previsao_remocoes, previsao_faturamento, empresa)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''', (
-                    date.today().isoformat(),
-                    dia_str,
-                    valor_consolidado,
-                    km_dia,
-                    remocoes_dia,
-                    len(df_dia_adulto),
-                    len(df_dia_neo),
-                    faturamento_dia,
-                    ticket_medio,
-                    previsao_remocoes,
-                    previsao_faturamento,
-                    chave,
+                    date.today().isoformat(), dia_str, valor_consolidado, km_dia, remocoes_dia,
+                    len(df_dia_adulto), len(df_dia_neo), faturamento_dia, ticket_medio,
+                    previsao_remocoes, previsao_faturamento, chave,
                 ))
                 datas_existentes.add((chave, dia_str))
                 total_inseridos += 1
