@@ -5,7 +5,28 @@ import plotly.graph_objects as go
 from datetime import date
 import os
 
-st.set_page_config(page_title="KPI Dashboard — Todas as Empresas", page_icon="🏥", layout="wide")
+st.set_page_config(page_title="KPI Mensal — Todas as Empresas", page_icon="🏥", layout="wide")
+
+st.markdown("""
+<style>
+    .main { background-color: #f4f6fb; }
+    .block-container { padding-top: 1.5rem; padding-bottom: 1rem; }
+    .kpi-card {
+        background: white;
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin-bottom: 10px;
+        border-left: 5px solid #ccc;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .kpi-empresa { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .kpi-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .kpi-item { flex: 1; min-width: 100px; }
+    .kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin-bottom: 2px; }
+    .kpi-value { font-size: 18px; font-weight: 700; color: #1a1a2e; }
+    .secao { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin: 20px 0 10px 0; }
+</style>
+""", unsafe_allow_html=True)
 
 EMPRESAS = {
     'sert':      {'nome': 'Sert Med',           'cor': '#b8d400'},
@@ -48,89 +69,92 @@ def num(v, d=1):
     try: return f"{float(v):,.{d}f}".replace(",","X").replace(".",",").replace("X",".")
     except: return "—"
 
-# ── Header
-st.markdown("## 🏥 Dashboard KPI — Todas as Empresas")
-st.caption("Atualização automática a cada 5 minutos · Fonte: banco PostgreSQL Supabase")
-st.divider()
+col_title, col_sel = st.columns([4, 2])
+with col_title:
+    st.markdown("## 🏥 KPI Mensal — Todas as Empresas")
+    st.caption("Atualização automática a cada 5 minutos · Supabase PostgreSQL")
 
-# ── Seletor
 hoje = date.today()
 meses = {1:"Janeiro",2:"Fevereiro",3:"Março",4:"Abril",5:"Maio",6:"Junho",
          7:"Julho",8:"Agosto",9:"Setembro",10:"Outubro",11:"Novembro",12:"Dezembro"}
-c1, c2, _ = st.columns([1,1,6])
-with c1: ano = st.selectbox("Ano", [2025,2026], index=1 if hoje.year==2026 else 0)
-with c2: mes = st.selectbox("Mês", list(meses.keys()), format_func=lambda x: meses[x], index=hoje.month-1)
+with col_sel:
+    c1, c2 = st.columns(2)
+    with c1: ano = st.selectbox("Ano", [2025,2026], index=1 if hoje.year==2026 else 0)
+    with c2: mes = st.selectbox("Mês", list(meses.keys()), format_func=lambda x: meses[x], index=hoje.month-1)
 
 df = carregar_dados(ano, mes, list(EMPRESAS.keys()))
-
 if df.empty:
     st.warning("Nenhum dado encontrado.")
     st.stop()
 
-st.markdown(f"**{meses[mes]}/{ano}**")
-st.divider()
+corte_max = pd.to_datetime(df['data_corte']).max().strftime('%d/%m/%Y')
+st.markdown(f"<div class='secao'>📅 {meses[mes]}/{ano} · Corte: {corte_max}</div>", unsafe_allow_html=True)
 
-# ── Cards por empresa
-st.markdown("### 📊 KPIs por Empresa")
-cols = st.columns(len(EMPRESAS))
+st.markdown("<div class='secao'>Indicadores por Empresa</div>", unsafe_allow_html=True)
 
-for i, (chave, info) in enumerate(EMPRESAS.items()):
+for chave, info in EMPRESAS.items():
     df_emp = df[df['empresa'] == chave]
     if df_emp.empty:
-        cols[i].warning(f"{info['nome']}\nSem dados")
         continue
-    ultimo = df_emp.sort_values("data_corte").iloc[-1]
-    with cols[i]:
-        st.markdown(f"**{info['nome']}**")
-        st.metric("💰 Valor Consolidado", brl(ultimo['valor_consolidado']))
-        st.metric("💵 Faturamento/dia", brl(ultimo['faturamento_dia']))
-        st.metric("📈 Prev. Faturamento", brl(ultimo['previsao_faturamento']))
-        st.metric("🚑 Adulto", int(ultimo['remocoes_adulto']))
-        st.metric("👶 Neonatal", int(ultimo['remocoes_neonatal']))
-        st.metric("📦 Prev. Remoções", int(ultimo['previsao_remocoes']))
-        st.metric("📊 Rem/dia", num(ultimo['remocoes_dia']))
-        st.metric("🛣️ Km/dia", num(ultimo['km_dia']))
-        st.metric("🎫 Ticket Médio", brl(ultimo['ticket_medio']))
+    u = df_emp.sort_values("data_corte").iloc[-1]
+    st.markdown(f"""
+    <div class='kpi-card' style='border-left-color: {info['cor']}'>
+        <div class='kpi-empresa' style='color: {info['cor']}'>{info['nome']}</div>
+        <div class='kpi-row'>
+            <div class='kpi-item'><div class='kpi-label'>Valor Consolidado</div><div class='kpi-value'>{brl(u['valor_consolidado'])}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Faturamento/dia</div><div class='kpi-value'>{brl(u['faturamento_dia'])}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Prev. Faturamento</div><div class='kpi-value'>{brl(u['previsao_faturamento'])}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Adulto</div><div class='kpi-value'>{int(u['remocoes_adulto'])}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Neonatal</div><div class='kpi-value'>{int(u['remocoes_neonatal'])}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Prev. Remoções</div><div class='kpi-value'>{int(u['previsao_remocoes'])}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Rem/dia</div><div class='kpi-value'>{num(u['remocoes_dia'])}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Km/dia</div><div class='kpi-value'>{num(u['km_dia'])}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Ticket Médio</div><div class='kpi-value'>{brl(u['ticket_medio'])}</div></div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-st.divider()
-
-# ── Gráfico comparativo
-st.markdown("### 📅 Evolução — Faturamento Acumulado do Mês")
+st.markdown("<div class='secao'>Evolução — Faturamento Acumulado do Mês</div>", unsafe_allow_html=True)
 fig = go.Figure()
 for chave, info in EMPRESAS.items():
-    df_emp = df[df['empresa'] == chave].sort_values("data_corte")
+    df_emp = df[df['empresa'] == chave].copy()
     if df_emp.empty: continue
-    df_emp = df_emp.copy()
     df_emp['data_corte'] = pd.to_datetime(df_emp['data_corte'])
     df_emp = df_emp.sort_values('data_corte')
-    df_emp['data_label'] = df_emp['data_corte'].dt.strftime('%d/%m')
     fig.add_trace(go.Scatter(
         x=df_emp['data_corte'], y=df_emp['valor_consolidado'],
         name=info['nome'], mode="lines+markers",
         line=dict(color=info['cor'], width=2),
+        marker=dict(size=6),
     ))
-fig.update_layout(xaxis_title="Data", yaxis_title="R$",
-                  legend=dict(orientation="h", y=-0.2),
-                  margin=dict(t=20, b=40), height=340)
+fig.update_layout(
+    plot_bgcolor='white', paper_bgcolor='white',
+    xaxis=dict(showgrid=True, gridcolor='#f0f0f0'),
+    yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickprefix='R$ '),
+    legend=dict(orientation="h", y=-0.25),
+    margin=dict(t=10, b=40, l=10, r=10), height=340,
+)
 st.plotly_chart(fig, use_container_width=True)
 
-# ── Comparativo de faturamento previsto
-st.markdown("### 🔮 Previsão de Faturamento do Mês")
+st.markdown("<div class='secao'>Previsão de Faturamento do Mês</div>", unsafe_allow_html=True)
 empresas_nomes, previsoes, cores = [], [], []
 for chave, info in EMPRESAS.items():
     df_emp = df[df['empresa'] == chave]
     if df_emp.empty: continue
-    ultimo = df_emp.sort_values("data_corte").iloc[-1]
+    u = df_emp.sort_values("data_corte").iloc[-1]
     empresas_nomes.append(info['nome'])
-    previsoes.append(float(ultimo['previsao_faturamento']))
+    previsoes.append(float(u['previsao_faturamento']))
     cores.append(info['cor'])
-
 fig2 = go.Figure(go.Bar(x=empresas_nomes, y=previsoes, marker_color=cores))
-fig2.update_layout(yaxis_title="R$", margin=dict(t=20, b=40), height=300)
+fig2.update_layout(
+    plot_bgcolor='white', paper_bgcolor='white',
+    yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickprefix='R$ '),
+    margin=dict(t=10, b=40, l=10, r=10), height=300,
+)
 st.plotly_chart(fig2, use_container_width=True)
 
 with st.expander("📋 Ver todos os registros"):
-    st.dataframe(df.sort_values(["empresa","data_registro"], ascending=[True,False]),
+    st.dataframe(df.sort_values(["empresa","data_corte"], ascending=[True,False]),
                  use_container_width=True, hide_index=True)
 
-st.caption(f"Dashboard gerado em {date.today().strftime('%d/%m/%Y')}")
+st.caption(f"Dashboard gerado em {date.today().strftime('%d/%m/%Y')} · Piau Gestão em Saúde")
