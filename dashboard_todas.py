@@ -96,20 +96,31 @@ for chave, info in EMPRESAS.items():
     df_emp = df[df['empresa'] == chave]
     if df_emp.empty:
         continue
-    u = df_emp.sort_values("data_corte").iloc[-1]
+    # Somas e médias do mês todo
+    valor_consolidado  = df_emp['faturamento_dia'].sum()
+    faturamento_dia    = df_emp['faturamento_dia'].mean()
+    remocoes_adulto    = int(df_emp['remocoes_adulto'].sum())
+    remocoes_neonatal  = int(df_emp['remocoes_neonatal'].sum())
+    remocoes_dia       = df_emp['remocoes_dia'].mean()
+    km_dia             = df_emp['km_dia'].mean()
+    ticket_medio       = df_emp['ticket_medio'].mean()
+    ultimo = df_emp.sort_values("data_corte").iloc[-1]
+    previsao_remocoes    = int(ultimo['previsao_remocoes'])
+    previsao_faturamento = float(ultimo['previsao_faturamento'])
+
     st.markdown(f"""
     <div class='kpi-card' style='border-left-color: {info['cor']}'>
         <div class='kpi-empresa' style='color: {info['cor']}'>{info['nome']}</div>
         <div class='kpi-row'>
-            <div class='kpi-item'><div class='kpi-label'>Valor Consolidado</div><div class='kpi-value'>{brl(u['valor_consolidado'])}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Faturamento/dia</div><div class='kpi-value'>{brl(u['faturamento_dia'])}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Prev. Faturamento</div><div class='kpi-value'>{brl(u['previsao_faturamento'])}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Adulto</div><div class='kpi-value'>{int(u['remocoes_adulto'])}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Neonatal</div><div class='kpi-value'>{int(u['remocoes_neonatal'])}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Prev. Remoções</div><div class='kpi-value'>{int(u['previsao_remocoes'])}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Rem/dia</div><div class='kpi-value'>{num(u['remocoes_dia'])}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Km/dia</div><div class='kpi-value'>{num(u['km_dia'])}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Ticket Médio</div><div class='kpi-value'>{brl(u['ticket_medio'])}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Valor Consolidado</div><div class='kpi-value'>{brl(valor_consolidado)}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Faturamento/dia</div><div class='kpi-value'>{brl(faturamento_dia)}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Prev. Faturamento</div><div class='kpi-value'>{brl(previsao_faturamento)}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Adulto</div><div class='kpi-value'>{remocoes_adulto}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Neonatal</div><div class='kpi-value'>{remocoes_neonatal}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Prev. Remoções</div><div class='kpi-value'>{previsao_remocoes}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Rem/dia</div><div class='kpi-value'>{num(remocoes_dia, 1)}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Km/dia</div><div class='kpi-value'>{num(km_dia, 0)}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Ticket Médio</div><div class='kpi-value'>{brl(ticket_medio)}</div></div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -117,26 +128,37 @@ for chave, info in EMPRESAS.items():
 st.markdown("<div class='secao'>Evolução — Faturamento Acumulado do Mês</div>", unsafe_allow_html=True)
 fig = go.Figure()
 for chave, info in EMPRESAS.items():
-    df_emp = df[df['empresa'] == chave].copy()
-    if df_emp.empty: continue
-    df_emp['data_corte'] = pd.to_datetime(df_emp['data_corte'])
-    df_emp = df_emp.sort_values('data_corte')
-    fig.add_trace(go.Scatter(
-        x=df_emp['data_corte'], y=df_emp['valor_consolidado'],
-        name=info['nome'], mode="lines+markers",
-        line=dict(color=info['cor'], width=2),
-        marker=dict(size=6),
-    ))
-fig.update_layout(
-    plot_bgcolor='white', paper_bgcolor='white',
-    xaxis=dict(showgrid=True, gridcolor='#f0f0f0'),
-    yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickprefix='R$ '),
-    legend=dict(orientation="h", y=-0.25),
-    margin=dict(t=10, b=40, l=10, r=10), height=340,
-)
-st.plotly_chart(fig, use_container_width=True)
+    df_emp = df[df['empresa'] == chave]
+    if df_emp.empty:
+        continue
+    # Somas e médias do mês todo
+    valor_consolidado  = df_emp['faturamento_dia'].sum()
+    faturamento_dia    = df_emp['faturamento_dia'].mean()
+    remocoes_adulto    = int(df_emp['remocoes_adulto'].sum())
+    remocoes_neonatal  = int(df_emp['remocoes_neonatal'].sum())
+    remocoes_dia       = df_emp['remocoes_dia'].mean()
+    km_dia             = df_emp['km_dia'].mean()
+    ticket_medio       = df_emp['ticket_medio'].mean()
+    ultimo = df_emp.sort_values("data_corte").iloc[-1]
+    previsao_remocoes    = int(ultimo['previsao_remocoes'])
+    previsao_faturamento = float(ultimo['previsao_faturamento'])
 
-st.markdown("<div class='secao'>Previsão de Faturamento do Mês</div>", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class='kpi-card' style='border-left-color: {info['cor']}'>
+        <div class='kpi-empresa' style='color: {info['cor']}'>{info['nome']}</div>
+        <div class='kpi-row'>
+            <div class='kpi-item'><div class='kpi-label'>Valor Consolidado</div><div class='kpi-value'>{brl(valor_consolidado)}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Faturamento/dia</div><div class='kpi-value'>{brl(faturamento_dia)}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Prev. Faturamento</div><div class='kpi-value'>{brl(previsao_faturamento)}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Adulto</div><div class='kpi-value'>{remocoes_adulto}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Neonatal</div><div class='kpi-value'>{remocoes_neonatal}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Prev. Remoções</div><div class='kpi-value'>{previsao_remocoes}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Rem/dia</div><div class='kpi-value'>{num(remocoes_dia, 1)}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Km/dia</div><div class='kpi-value'>{num(km_dia, 0)}</div></div>
+            <div class='kpi-item'><div class='kpi-label'>Ticket Médio</div><div class='kpi-value'>{brl(ticket_medio)}</div></div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 empresas_nomes, previsoes, cores = [], [], []
 for chave, info in EMPRESAS.items():
     df_emp = df[df['empresa'] == chave]
