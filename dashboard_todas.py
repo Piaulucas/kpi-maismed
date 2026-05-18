@@ -29,11 +29,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 EMPRESAS = {
-    'sert':      {'nome': 'Sert Med',           'cor': '#b8d400'},
-    'maismed':   {'nome': 'Mais Med',           'cor': '#fe0000'},
-    'falcon':    {'nome': 'Falcon',             'cor': '#010f72'},
-    'humanize':  {'nome': 'Humanize Life Care', 'cor': '#f48031'},
-    'alfa':      {'nome': 'Alfa Saúde',         'cor': '#0f9ca3'},
+    'sert':      {'nome': 'Empresa 1',           'cor': '#b8d400'},
+    'maismed':   {'nome': 'Empresa 2',           'cor': '#fe0000'},
+    'falcon':    {'nome': 'Empresa 3',             'cor': '#010f72'},
+    'humanize':  {'nome': 'Empresa 4', 'cor': '#f48031'},
+    'alfa':      {'nome': 'Empresa 5',         'cor': '#0f9ca3'},
 }
 
 DB_HOST     = st.secrets.get("database", {}).get("host",     os.getenv("DB_HOST",     "aws-1-us-east-1.pooler.supabase.com"))
