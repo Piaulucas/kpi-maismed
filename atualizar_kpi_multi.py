@@ -7,7 +7,6 @@ import glob
 import os
 
 # ── CONFIGURAÇÃO ─────────────────────────────────────────────────────────────
-# Passa o nome da empresa como argumento: python3 atualizar_kpi_multi.py maismed
 EMPRESAS = {
     'maismed': {
         'nome': 'Mais Med',
@@ -39,11 +38,10 @@ DB_PASS = 'REDACTED'
 
 # ── LEITURA ───────────────────────────────────────────────────────────────────
 def coluna_km(df):
-    """Encontra a coluna KM independente de espaços extras."""
     for col in df.columns:
         if 'KM TOTAL' in col.upper().strip():
             return col
-    raise ValueError(f"Coluna KM TOTAL não encontrada. Colunas disponíveis: {list(df.columns)}")
+    raise ValueError(f"Coluna KM TOTAL não encontrada. Colunas: {list(df.columns)}")
 
 def ler_aba(planilha, aba):
     df = pd.read_excel(planilha, sheet_name=aba, skiprows=14, usecols='B:T')
@@ -55,16 +53,12 @@ def ler_aba(planilha, aba):
 def ler_planilha(planilha):
     xl = pd.ExcelFile(planilha)
     abas = xl.sheet_names
-
     abas_adulto = [a for a in abas if 'ADULTO' in a.upper()]
     abas_neo    = [a for a in abas if 'NEONATAL' in a.upper()]
-
     frames_adulto = [ler_aba(planilha, a) for a in abas_adulto]
     frames_neo    = [ler_aba(planilha, a) for a in abas_neo]
-
     df_adulto = pd.concat(frames_adulto, ignore_index=True) if frames_adulto else pd.DataFrame()
     df_neo    = pd.concat(frames_neo,    ignore_index=True) if frames_neo    else pd.DataFrame()
-
     return df_adulto, df_neo
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
@@ -75,7 +69,7 @@ if len(sys.argv) < 2:
 
 chave = sys.argv[1].lower()
 if chave not in EMPRESAS:
-    print(f"❌ Empresa '{chave}' não encontrada. Disponíveis: {', '.join(EMPRESAS.keys())}")
+    print(f"❌ Empresa '{chave}' não encontrada.")
     sys.exit(1)
 
 empresa = EMPRESAS[chave]
@@ -96,84 +90,78 @@ if df_total.empty:
     print(f"❌ Nenhum dado encontrado na planilha.")
     sys.exit(1)
 
-# ── KPIs ──────────────────────────────────────────────────────────────────────
-data_corte  = df_total['DATA'].max()
-dias_uteis  = df_total['DATA'].nunique()
-dias_no_mes = calendar.monthrange(data_corte.year, data_corte.month)[1]
-col_km      = coluna_km(df_total)
+col_km = coluna_km(df_total)
+dias_no_mes = calendar.monthrange(df_total['DATA'].max().year, df_total['DATA'].max().month)[1]
 
-valor_consolidado  = float(df_total['VALOR TOTAL'].sum())
-km_dia             = float(df_total[col_km].sum() / dias_uteis)
-remocoes_dia       = float(len(df_total) / dias_uteis)
-faturamento_dia    = float(valor_consolidado / dias_uteis)
-ticket_medio       = float(valor_consolidado / len(df_total))
-previsao_remocoes  = int(round(remocoes_dia * dias_no_mes))
-previsao_faturamento = float(round(faturamento_dia * dias_no_mes))
-
-# ── BANCO ─────────────────────────────────────────────────────────────────────
+# ── CONECTAR AO BANCO ────────────────────────────────────────────────────────
 conn = psycopg2.connect(
     host=DB_HOST, port=DB_PORT,
     dbname=DB_NAME, user=DB_USER, password=DB_PASS
 )
 cursor = conn.cursor()
 
-cursor.execute('''
-    CREATE TABLE IF NOT EXISTS kpi_historico (
-        data_registro DATE,
-        data_corte DATE,
-        empresa VARCHAR(50),
-        valor_consolidado REAL,
-        km_dia REAL,
-        remocoes_dia REAL,
-        remocoes_adulto INTEGER,
-        remocoes_neonatal INTEGER,
-        faturamento_dia REAL,
-        ticket_medio REAL,
-        previsao_remocoes INTEGER,
-        previsao_faturamento REAL
-    )
-''')
-
+# Busca datas já existentes no banco para essa empresa
 cursor.execute(
-    'SELECT COUNT(*) FROM kpi_historico WHERE data_corte = %s AND empresa = %s',
-    (str(data_corte)[:10], chave)
+    'SELECT data_corte FROM kpi_historico WHERE empresa = %s', (chave,)
 )
-contagem = cursor.fetchone()[0]
+datas_existentes = {str(r[0]) for r in cursor.fetchall()}
 
-if contagem == 0:
+# ── PROCESSAR DIA A DIA ───────────────────────────────────────────────────────
+dias_planilha = sorted(df_total['DATA'].dt.date.unique())
+inseridos = 0
+ignorados = 0
+
+for dia in dias_planilha:
+    dia_str = str(dia)
+    if dia_str in datas_existentes:
+        ignorados += 1
+        continue
+
+    # Dados do dia específico
+    df_dia_adulto = df_adulto[df_adulto['DATA'].dt.date == dia]
+    df_dia_neo    = df_neo[df_neo['DATA'].dt.date == dia]
+    df_dia        = pd.concat([df_dia_adulto, df_dia_neo], ignore_index=True)
+
+    # KPIs acumulados até esse dia (para previsão)
+    df_ate_dia = df_total[df_total['DATA'].dt.date <= dia]
+    dias_uteis_ate = df_ate_dia['DATA'].dt.date.nunique()
+
+    valor_consolidado  = float(df_ate_dia['VALOR TOTAL'].sum())
+    km_dia             = float(df_dia[col_km].sum())
+    remocoes_dia       = float(len(df_dia))
+    faturamento_dia    = float(df_dia['VALOR TOTAL'].sum())
+    ticket_medio       = float(df_dia['VALOR TOTAL'].mean()) if len(df_dia) > 0 else 0.0
+
+    # Previsão baseada na média acumulada até o dia
+    media_rem_dia  = float(df_ate_dia['VALOR TOTAL'].count() / dias_uteis_ate)
+    media_fat_dia  = float(df_ate_dia['VALOR TOTAL'].sum() / dias_uteis_ate)
+    previsao_remocoes    = int(round(media_rem_dia * dias_no_mes))
+    previsao_faturamento = float(round(media_fat_dia * dias_no_mes))
+
     cursor.execute('''
-        INSERT INTO kpi_historico 
+        INSERT INTO kpi_historico
             (data_registro, data_corte, valor_consolidado, km_dia, remocoes_dia,
              remocoes_adulto, remocoes_neonatal, faturamento_dia, ticket_medio,
              previsao_remocoes, previsao_faturamento, empresa)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ''', (
         date.today().isoformat(),
-        str(data_corte)[:10],
+        dia_str,
         valor_consolidado,
         km_dia,
         remocoes_dia,
-        len(df_adulto),
-        len(df_neo),
+        len(df_dia_adulto),
+        len(df_dia_neo),
         faturamento_dia,
         ticket_medio,
         previsao_remocoes,
         previsao_faturamento,
         chave,
     ))
-    conn.commit()
-    print(f"✅ KPI registrado para {empresa['nome']}!")
-else:
-    print(f"⚠️  Data {str(data_corte)[:10]} já existe para {empresa['nome']}. Nada inserido.")
+    inseridos += 1
+    print(f"  ✅ {dia_str} — {len(df_dia)} remoções · R$ {faturamento_dia:,.2f}")
 
+conn.commit()
 conn.close()
 
-print(f"KPI atualizado até: {str(data_corte)[:10]}")
-print(f"Valor Consolidado: R$ {valor_consolidado:,.2f}")
-print(f"Remoções: {len(df_adulto)} adulto(s) + {len(df_neo)} neonatal(is) = {len(df_total)} total")
-print(f"Km/dia: {km_dia:.2f}")
-print(f"Remoções/dia: {remocoes_dia:.2f}")
-print(f"Faturamento/dia: R$ {faturamento_dia:,.2f}")
-print(f"Ticket Médio: R$ {ticket_medio:,.2f}")
-print(f"Previsão Remoções: {previsao_remocoes}")
-print(f"Previsão Faturamento: R$ {previsao_faturamento:,.2f}")
+print(f"\n📊 [{empresa['nome']}] {inseridos} dia(s) inserido(s), {ignorados} já existia(m).")
