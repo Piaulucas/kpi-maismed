@@ -13,23 +13,23 @@ load_dotenv()
 EMPRESAS = {
     'maismed': {
         'nome': 'Mais Med',
-        'pasta': '/Users/lucaspiau/Library/CloudStorage/OneDrive-Pessoal/EXCEL COMPARTILHADO/MAIS MED/2026',
+        'pasta': '/Users/lucaspiau/Library/CloudStorage/OneDrive-Pessoal/EXCEL COMPARTILHADO/MAIS MED/planilhas_de_faturamento/2026',
     },
     'alfa': {
         'nome': 'Alfa Saúde',
-        'pasta': '/Users/lucaspiau/Library/CloudStorage/OneDrive-Pessoal/EXCEL COMPARTILHADO/ALFA SAÚDE/2026',
+        'pasta': '/Users/lucaspiau/Library/CloudStorage/OneDrive-Pessoal/EXCEL COMPARTILHADO/ALFA SAÚDE/Planilhas_de_faturamento/2026',
     },
     'humanize': {
         'nome': 'Humanize Life Care',
-        'pasta': '/Users/lucaspiau/Library/CloudStorage/OneDrive-Pessoal/EXCEL COMPARTILHADO/HUMANIZE LIFE CARE/2026',
+        'pasta': '/Users/lucaspiau/Library/CloudStorage/OneDrive-Pessoal/EXCEL COMPARTILHADO/HUMANIZE LIFE CARE/planilhas_de_faturamento/2026',
     },
     'sert': {
         'nome': 'Sert Med',
-        'pasta': '/Users/lucaspiau/Library/CloudStorage/OneDrive-Pessoal/EXCEL COMPARTILHADO/SERT MED/2026',
+        'pasta': '/Users/lucaspiau/Library/CloudStorage/OneDrive-Pessoal/EXCEL COMPARTILHADO/SERT MED/planilhas_de_faturamento/2026',
     },
     'falcon': {
         'nome': 'Falcon',
-        'pasta': '/Users/lucaspiau/Library/CloudStorage/OneDrive-Pessoal/EXCEL COMPARTILHADO/FALCON/2026',
+        'pasta': '/Users/lucaspiau/Library/CloudStorage/OneDrive-Pessoal/EXCEL COMPARTILHADO/FALCON/planilhas_de_faturamento/2026',
     },
 }
 
