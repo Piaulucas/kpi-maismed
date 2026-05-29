@@ -136,53 +136,48 @@ for chave, info in EMPRESAS.items():
     dias = df_emp['data_corte'].dt.strftime('%d/%m').tolist()
 
     with st.expander(f"📊 {info['nome']}", expanded=False):
-        c1, c2, c3 = st.columns(3)
+        st.caption("Remoções/dia")
+        fig_r = go.Figure(go.Bar(
+            x=dias, y=df_emp['remocoes_dia'],
+            marker_color=info['cor'], opacity=0.7,
+        ))
+        fig_r.update_layout(
+            plot_bgcolor='white', paper_bgcolor='white',
+            margin=dict(t=10, b=30, l=40, r=10), height=200,
+            xaxis=dict(showgrid=False, tickfont=dict(size=10), tickangle=0),
+            yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11)),
+        )
+        st.plotly_chart(fig_r, use_container_width=True)
 
-        with c1:
-            st.caption("Remoções/dia")
-            fig_r = go.Figure(go.Bar(
-                x=dias, y=df_emp['remocoes_dia'],
-                marker_color=info['cor'], opacity=0.8,
-            ))
-            fig_r.update_layout(
-                plot_bgcolor='white', paper_bgcolor='white',
-                margin=dict(t=10, b=10, l=40, r=10), height=240,
-                xaxis=dict(showgrid=False, showticklabels=False),
-                yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11)),
-            )
-            st.plotly_chart(fig_r, use_container_width=True)
+        st.caption("Km/dia")
+        fig_k = go.Figure(go.Scatter(
+            x=dias, y=df_emp['km_dia'],
+            mode='lines+markers',
+            line=dict(color=info['cor'], width=2),
+            marker=dict(size=5),
+        ))
+        fig_k.update_layout(
+            plot_bgcolor='white', paper_bgcolor='white',
+            margin=dict(t=10, b=30, l=50, r=10), height=200,
+            xaxis=dict(showgrid=False, tickfont=dict(size=10), tickangle=0),
+            yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11)),
+        )
+        st.plotly_chart(fig_k, use_container_width=True)
 
-        with c2:
-            st.caption("Km/dia")
-            fig_k = go.Figure(go.Scatter(
-                x=dias, y=df_emp['km_dia'],
-                mode='lines+markers',
-                line=dict(color=info['cor'], width=2),
-                marker=dict(size=5),
-            ))
-            fig_k.update_layout(
-                plot_bgcolor='white', paper_bgcolor='white',
-                margin=dict(t=10, b=10, l=50, r=10), height=240,
-                xaxis=dict(showgrid=False, showticklabels=False),
-                yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11)),
-            )
-            st.plotly_chart(fig_k, use_container_width=True)
-
-        with c3:
-            st.caption("Faturamento/dia (R$)")
-            fig_f = go.Figure(go.Scatter(
-                x=dias, y=df_emp['faturamento_dia'],
-                mode='lines+markers',
-                line=dict(color=info['cor'], width=2),
-                marker=dict(size=5),
-            ))
-            fig_f.update_layout(
-                plot_bgcolor='white', paper_bgcolor='white',
-                margin=dict(t=10, b=10, l=70, r=10), height=240,
-                xaxis=dict(showgrid=False, showticklabels=False),
-                yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11), tickprefix='R$ ', tickformat=',.0f'),
-            )
-            st.plotly_chart(fig_f, use_container_width=True)
+        st.caption("Faturamento/dia (R$)")
+        fig_f = go.Figure(go.Scatter(
+            x=dias, y=df_emp['faturamento_dia'],
+            mode='lines+markers',
+            line=dict(color=info['cor'], width=2),
+            marker=dict(size=5),
+        ))
+        fig_f.update_layout(
+            plot_bgcolor='white', paper_bgcolor='white',
+            margin=dict(t=10, b=30, l=70, r=10), height=200,
+            xaxis=dict(showgrid=False, tickfont=dict(size=10), tickangle=0),
+            yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11), tickprefix='R$ ', tickformat=',.0f'),
+        )
+        st.plotly_chart(fig_f, use_container_width=True)
 
 st.markdown("<div class='secao'>Evolução — Faturamento Acumulado do Mês</div>", unsafe_allow_html=True)
 fig = go.Figure()
