@@ -142,10 +142,10 @@ for chave, info in EMPRESAS.items():
             marker_color=info['cor'], opacity=0.7,
         ))
         fig_r.update_layout(
-            plot_bgcolor='white', paper_bgcolor='white',
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
             margin=dict(t=10, b=30, l=40, r=10), height=200,
             xaxis=dict(showgrid=False, tickfont=dict(size=10), tickangle=0),
-            yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11)),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', tickfont=dict(size=11)),
         )
         st.plotly_chart(fig_r, use_container_width=True)
 
@@ -157,10 +157,10 @@ for chave, info in EMPRESAS.items():
             marker=dict(size=5),
         ))
         fig_k.update_layout(
-            plot_bgcolor='white', paper_bgcolor='white',
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
             margin=dict(t=10, b=30, l=50, r=10), height=200,
             xaxis=dict(showgrid=False, tickfont=dict(size=10), tickangle=0),
-            yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11)),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', tickfont=dict(size=11)),
         )
         st.plotly_chart(fig_k, use_container_width=True)
 
@@ -172,10 +172,10 @@ for chave, info in EMPRESAS.items():
             marker=dict(size=5),
         ))
         fig_f.update_layout(
-            plot_bgcolor='white', paper_bgcolor='white',
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
             margin=dict(t=10, b=30, l=70, r=10), height=200,
             xaxis=dict(showgrid=False, tickfont=dict(size=10), tickangle=0),
-            yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11), tickprefix='R$ ', tickformat=',.0f'),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', tickfont=dict(size=11), tickprefix='R$ ', tickformat=',.0f'),
         )
         st.plotly_chart(fig_f, use_container_width=True)
 
@@ -193,7 +193,7 @@ for chave, info in EMPRESAS.items():
         marker=dict(size=6),
     ))
 fig.update_layout(
-    plot_bgcolor='white', paper_bgcolor='white',
+    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
     xaxis=dict(showgrid=True, gridcolor='#f0f0f0'),
     yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickprefix='R$ '),
     legend=dict(orientation="h", y=-0.25),
@@ -212,7 +212,7 @@ for chave, info in EMPRESAS.items():
     cores.append(info['cor'])
 fig2 = go.Figure(go.Bar(x=empresas_nomes, y=previsoes, marker_color=cores))
 fig2.update_layout(
-    plot_bgcolor='white', paper_bgcolor='white',
+    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
     yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickprefix='R$ '),
     margin=dict(t=10, b=40, l=10, r=10), height=300,
 )
