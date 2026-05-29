@@ -146,9 +146,9 @@ for chave, info in EMPRESAS.items():
             ))
             fig_r.update_layout(
                 plot_bgcolor='white', paper_bgcolor='white',
-                margin=dict(t=10, b=30, l=10, r=10), height=200,
-                xaxis=dict(showgrid=False, tickfont=dict(size=10)),
-                yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=10)),
+                margin=dict(t=10, b=10, l=40, r=10), height=240,
+                xaxis=dict(showgrid=False, showticklabels=False),
+                yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11)),
             )
             st.plotly_chart(fig_r, use_container_width=True)
 
@@ -162,9 +162,9 @@ for chave, info in EMPRESAS.items():
             ))
             fig_k.update_layout(
                 plot_bgcolor='white', paper_bgcolor='white',
-                margin=dict(t=10, b=30, l=10, r=10), height=200,
-                xaxis=dict(showgrid=False, tickfont=dict(size=10)),
-                yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=10)),
+                margin=dict(t=10, b=10, l=50, r=10), height=240,
+                xaxis=dict(showgrid=False, showticklabels=False),
+                yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11)),
             )
             st.plotly_chart(fig_k, use_container_width=True)
 
@@ -178,9 +178,9 @@ for chave, info in EMPRESAS.items():
             ))
             fig_f.update_layout(
                 plot_bgcolor='white', paper_bgcolor='white',
-                margin=dict(t=10, b=30, l=10, r=10), height=200,
-                xaxis=dict(showgrid=False, tickfont=dict(size=10)),
-                yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=10), tickprefix='R$ '),
+                margin=dict(t=10, b=10, l=70, r=10), height=240,
+                xaxis=dict(showgrid=False, showticklabels=False),
+                yaxis=dict(showgrid=True, gridcolor='#f0f0f0', tickfont=dict(size=11), tickprefix='R$ ', tickformat=',.0f'),
             )
             st.plotly_chart(fig_f, use_container_width=True)
 
