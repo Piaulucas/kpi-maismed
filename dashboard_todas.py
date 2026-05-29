@@ -175,8 +175,6 @@ for chave, info in EMPRESAS.items():
                 mode='lines+markers',
                 line=dict(color=info['cor'], width=2),
                 marker=dict(size=5),
-                fill='tozeroy',
-                fillcolor=info['cor'].replace('#','rgba(').rstrip(')') + ',0.15)',
             ))
             fig_f.update_layout(
                 plot_bgcolor='white', paper_bgcolor='white',
