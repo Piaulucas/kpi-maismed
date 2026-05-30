@@ -204,4 +204,71 @@ with st.expander("📋 Ver dados brutos do período"):
         use_container_width=True, hide_index=True
     )
 
+# ── Evolução semanal por empresa
+st.markdown("<div class='secao'>Evolução Semanal por Empresa</div>", unsafe_allow_html=True)
+
+df['semana'] = df['data_corte'].dt.to_period('W')
+df['semana_label'] = df['data_corte'].dt.to_period('W').apply(
+    lambda w: pd.Period(w, 'W').start_time.strftime('%d/%m')
+)
+
+for chave, info in EMPRESAS.items():
+    df_emp = df[df['empresa'] == chave]
+    if df_emp.empty:
+        continue
+
+    df_sem = df_emp.groupby('semana').agg(
+        remocoes=('remocoes_dia', 'sum'),
+        km=('km_dia', 'sum'),
+        faturamento=('faturamento_dia', 'sum'),
+        label=('semana_label', 'first'),
+    ).reset_index().sort_values('semana')
+
+    semanas = df_sem['label'].tolist()
+
+    with st.expander(f"📊 {info['nome']}", expanded=False):
+        st.caption("Remoções/semana")
+        fig_r = go.Figure(go.Bar(
+            x=semanas, y=df_sem['remocoes'],
+            marker_color=info['cor'], opacity=0.7,
+        ))
+        fig_r.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(t=10, b=30, l=40, r=10), height=200,
+            xaxis=dict(showgrid=False, tickfont=dict(size=10), tickangle=0),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)'),
+        )
+        st.plotly_chart(fig_r, use_container_width=True)
+
+        st.caption("Km/semana")
+        fig_k = go.Figure(go.Scatter(
+            x=semanas, y=df_sem['km'],
+            mode='lines+markers',
+            line=dict(color=info['cor'], width=2),
+            marker=dict(size=5),
+        ))
+        fig_k.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(t=10, b=30, l=50, r=10), height=200,
+            xaxis=dict(showgrid=False, tickfont=dict(size=10), tickangle=0),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)'),
+        )
+        st.plotly_chart(fig_k, use_container_width=True)
+
+        st.caption("Faturamento/semana (R$)")
+        fig_f = go.Figure(go.Scatter(
+            x=semanas, y=df_sem['faturamento'],
+            mode='lines+markers',
+            line=dict(color=info['cor'], width=2),
+            marker=dict(size=5),
+        ))
+        fig_f.update_layout(
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+            margin=dict(t=10, b=30, l=70, r=10), height=200,
+            xaxis=dict(showgrid=False, tickfont=dict(size=10), tickangle=0),
+            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)',
+                       tickprefix='R$ ', tickformat=',.0f'),
+        )
+        st.plotly_chart(fig_f, use_container_width=True)
+
 st.caption(f"Análise gerada em {date.today().strftime('%d/%m/%Y')} · Piau Gestão em Saúde")
