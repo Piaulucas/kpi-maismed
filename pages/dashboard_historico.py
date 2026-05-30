@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from datetime import date
 import os
 
-st.set_page_config(page_title="Análise Histórica — Todas as Empresas", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Análise Histórica — Todas as Empresas", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
 <style>
@@ -148,7 +148,7 @@ for chave, info in EMPRESAS.items():
     vals = []
     for p in periodos:
         row = df_e[df_e['ano_mes'] == p]
-        vals.append(float(row['faturamento_dia'].values[0]) if not row.empty else 0)
+        vals.append(float(row['faturamento_dia'].values[0]) if not row.empty else None)
     fig_bar.add_trace(go.Bar(name=info['nome'], x=labels, y=vals, marker_color=info['cor'], opacity=0.85))
 
 fig_bar.update_layout(
