@@ -70,7 +70,7 @@ def ler_planilha(planilha):
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 if len(sys.argv) < 2:
-    print("Uso: python3 atualizar_kpi_multi.py <empresa>")
+    print("Uso: python3 atualizar_kpi_multi.py <empresa> [--reprocessar YYYY-MM-DD]")
     print(f"Empresas disponíveis: {', '.join(EMPRESAS.keys())}")
     sys.exit(1)
 
@@ -79,8 +79,24 @@ if chave not in EMPRESAS:
     print(f"❌ Empresa '{chave}' não encontrada.")
     sys.exit(1)
 
+# Verifica se foi passado --reprocessar
+reprocessar_dia = None
+if '--reprocessar' in sys.argv:
+    idx = sys.argv.index('--reprocessar')
+    if idx + 1 >= len(sys.argv):
+        print("❌ Informe a data após --reprocessar. Ex: --reprocessar 2026-05-15")
+        sys.exit(1)
+    reprocessar_dia = sys.argv[idx + 1]
+    try:
+        from datetime import datetime
+        datetime.strptime(reprocessar_dia, '%Y-%m-%d')
+    except ValueError:
+        print(f"❌ Data inválida: {reprocessar_dia}. Use o formato YYYY-MM-DD")
+        sys.exit(1)
+    print(f"🔄 Modo reprocessamento: {reprocessar_dia}")
+
 empresa = EMPRESAS[chave]
-mes_atual = date.today().strftime('%m')
+mes_atual = date.today().strftime('%m') if not reprocessar_dia else reprocessar_dia[5:7]
 arquivos = glob.glob(f"{empresa['pasta']}/{mes_atual}_*26.xlsx")
 
 if not arquivos:
@@ -111,7 +127,22 @@ cursor.execute(
 )
 datas_existentes = {str(r[0]) for r in cursor.fetchall()}
 
-dias_planilha = sorted(df_total['DATA'].dt.date.unique())
+# Se --reprocessar, deleta o dia do banco antes de processar
+if reprocessar_dia:
+    cursor.execute(
+        'DELETE FROM kpi_historico WHERE empresa = %s AND data_corte = %s',
+        (chave, reprocessar_dia)
+    )
+    datas_existentes.discard(reprocessar_dia)
+    print(f"🗑️  Registro de {reprocessar_dia} removido do banco para reinserção")
+    dias_planilha = [d for d in sorted(df_total['DATA'].dt.date.unique()) if str(d) == reprocessar_dia]
+    if not dias_planilha:
+        print(f"❌ Data {reprocessar_dia} não encontrada na planilha.")
+        conn.close()
+        sys.exit(1)
+else:
+    dias_planilha = sorted(df_total['DATA'].dt.date.unique())
+
 inseridos = 0
 ignorados = 0
 
