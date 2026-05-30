@@ -97,14 +97,29 @@ if df.empty:
     st.warning("Nenhum dado encontrado para o período selecionado.")
     st.stop()
 
+# ── Seletor de empresas
+empresas_opcoes = {chave: info['nome'] for chave, info in EMPRESAS.items()}
+empresas_sel = st.multiselect(
+    "Empresas",
+    options=list(empresas_opcoes.keys()),
+    default=list(empresas_opcoes.keys()),
+    format_func=lambda x: empresas_opcoes[x],
+)
+if not empresas_sel:
+    st.warning("Selecione ao menos uma empresa.")
+    st.stop()
+
+EMPRESAS_ATIVAS = {k: v for k, v in EMPRESAS.items() if k in empresas_sel}
+df = df[df['empresa'].isin(empresas_sel)]
+
 periodo_label = f"{meses[mes_ini]}/{ano_ini} → {meses[mes_fim]}/{ano_fim}"
 st.markdown(f"<div class='secao'>📅 {periodo_label}</div>", unsafe_allow_html=True)
 
 # ── Cards de totais por empresa
 st.markdown("<div class='secao'>Totais do Período por Empresa</div>", unsafe_allow_html=True)
-cols = st.columns(len(EMPRESAS))
+cols = st.columns(len(EMPRESAS_ATIVAS))
 
-for i, (chave, info) in enumerate(EMPRESAS.items()):
+for i, (chave, info) in enumerate(EMPRESAS_ATIVAS.items()):
     df_emp = df[df['empresa'] == chave]
     if df_emp.empty:
         cols[i].markdown(f"<div class='kpi-card'><div class='kpi-label' style='color:{info['cor']}'>{info['nome']}</div><div class='kpi-sub'>Sem dados</div></div>", unsafe_allow_html=True)
@@ -143,7 +158,7 @@ periodos = sorted(df_mensal['ano_mes'].unique())
 labels   = [meses[int(str(p).split('-')[1])][:3] + '/' + str(p).split('-')[0][2:] for p in periodos]
 
 fig_bar = go.Figure()
-for chave, info in EMPRESAS.items():
+for chave, info in EMPRESAS_ATIVAS.items():
     df_e = df_mensal[df_mensal['empresa'] == chave]
     vals = []
     for p in periodos:
@@ -174,7 +189,7 @@ st.markdown(f"<div class='secao'>Evolução Mensal — {kpi_sel}</div>", unsafe_
 df_line = df.groupby(['ano_mes', 'empresa'])[col_kpi].agg(agg_kpi).reset_index()
 
 fig_line = go.Figure()
-for chave, info in EMPRESAS.items():
+for chave, info in EMPRESAS_ATIVAS.items():
     df_e = df_line[df_line['empresa'] == chave]
     vals = []
     for p in periodos:
@@ -212,7 +227,7 @@ df['semana_label'] = df['data_corte'].dt.to_period('W').apply(
     lambda w: pd.Period(w, 'W').start_time.strftime('%d/%m')
 )
 
-for chave, info in EMPRESAS.items():
+for chave, info in EMPRESAS_ATIVAS.items():
     df_emp = df[df['empresa'] == chave]
     if df_emp.empty:
         continue
