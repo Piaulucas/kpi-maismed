@@ -96,7 +96,17 @@ if '--reprocessar' in sys.argv:
     print(f"🔄 Modo reprocessamento: {reprocessar_dia}")
 
 empresa = EMPRESAS[chave]
-mes_atual = date.today().strftime('%m') if not reprocessar_dia else reprocessar_dia[5:7]
+
+# Verifica se foi passado --mes
+if '--mes' in sys.argv:
+    idx = sys.argv.index('--mes')
+    if idx + 1 >= len(sys.argv):
+        print("❌ Informe o mês após --mes. Ex: --mes 05")
+        sys.exit(1)
+    mes_atual = sys.argv[idx + 1]
+else:
+    mes_atual = date.today().strftime('%m') if not reprocessar_dia else reprocessar_dia[5:7]
+
 arquivos = glob.glob(f"{empresa['pasta']}/{mes_atual}_*26.xlsx")
 
 if not arquivos:
