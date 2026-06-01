@@ -18,6 +18,14 @@ python3 atualizar_kpi_multi.py sert
 python3 atualizar_kpi_multi.py falcon
 ```
 
+## Atualizar mês anterior (virada de mês)
+> Use quando virar o mês e precisar inserir os últimos dias do mês anterior.
+
+```bash
+cd ~/Desktop/Estudos/KPI_maismed
+python3 atualizar_kpi_multi.py maismed --mes 05 && python3 atualizar_kpi_multi.py alfa --mes 05 && python3 atualizar_kpi_multi.py humanize --mes 05 && python3 atualizar_kpi_multi.py sert --mes 05 && python3 atualizar_kpi_multi.py falcon --mes 05
+```
+
 ## Reprocessar um dia específico
 > Use quando corrigir um valor na planilha após já ter inserido no banco.
 > O script deleta o registro daquele dia e reinsere com os dados atuais.
