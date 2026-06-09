@@ -52,8 +52,10 @@ def coluna_km(df):
 
 def ler_aba(planilha, aba):
     df = pd.read_excel(planilha, sheet_name=aba, skiprows=14, usecols='B:T')
-    df = df[df['PACIENTE'].notna()]
-    df = df[df['PACIENTE'].str.strip() != '']
+    df['PACIENTE'] = df['PACIENTE'].astype(str).str.strip()
+    df = df[df['PACIENTE'].notna() & (df['PACIENTE'].astype(str).str.strip() != '')]
+    if df.empty:
+        return pd.DataFrame()
     df['DATA'] = pd.to_datetime(df['DATA'])
     return df
 
@@ -123,6 +125,13 @@ if df_total.empty:
     print(f"❌ Nenhum dado encontrado na planilha.")
     sys.exit(1)
 
+# Verifica datas inválidas
+nulos = df_total[df_total['DATA'].isna()]
+if not nulos.empty:
+    print(f"❌ {len(nulos)} linha(s) com data inválida na planilha:")
+    print(nulos[['PACIENTE', 'DATA']].to_string())
+    sys.exit(1)
+
 col_km = coluna_km(df_total)
 dias_no_mes = calendar.monthrange(df_total['DATA'].max().year, df_total['DATA'].max().month)[1]
 
@@ -162,8 +171,8 @@ for dia in dias_planilha:
         ignorados += 1
         continue
 
-    df_dia_adulto = df_adulto[df_adulto['DATA'].dt.date == dia]
-    df_dia_neo    = df_neo[df_neo['DATA'].dt.date == dia]
+    df_dia_adulto = df_adulto[df_adulto['DATA'].dt.date == dia] if not df_adulto.empty else pd.DataFrame()
+    df_dia_neo    = df_neo[df_neo['DATA'].dt.date == dia] if not df_neo.empty else pd.DataFrame()
     df_dia        = pd.concat([df_dia_adulto, df_dia_neo], ignore_index=True)
 
     df_ate_dia = df_total[df_total['DATA'].dt.date <= dia]
