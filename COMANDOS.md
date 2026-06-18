@@ -23,7 +23,7 @@ python3 atualizar_kpi_multi.py falcon
 
 ```bash
 cd ~/Desktop/Estudos/KPI_maismed
-python3 atualizar_kpi_multi.py maismed --mes 05 && python3 atualizar_kpi_multi.py alfa --mes 05 && python3 atualizar_kpi_multi.py humanize --mes 05 && python3 atualizar_kpi_multi.py sert --mes 05 && python3 atualizar_kpi_multi.py falcon --mes 05
+python3 atualizar_kpi_multi.py maismed --mes 06 && python3 atualizar_kpi_multi.py alfa --mes 06 && python3 atualizar_kpi_multi.py humanize --mes 06 && python3 atualizar_kpi_multi.py sert --mes 06 && python3 atualizar_kpi_multi.py falcon --mes 06
 ```
 
 ## Reprocessar um dia específico
@@ -46,7 +46,7 @@ python3 atualizar_kpi_multi.py falcon --reprocessar 2026-05-10
 -- 1. Rodar no Supabase SQL Editor
 DELETE FROM kpi_historico
 WHERE EXTRACT(YEAR FROM data_corte) = 2026
-  AND EXTRACT(MONTH FROM data_corte) = 5;
+  AND EXTRACT(MONTH FROM data_corte) = 6;
 ```
 ```bash
 -- 2. Reinserir via script
