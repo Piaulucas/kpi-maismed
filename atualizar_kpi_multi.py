@@ -190,7 +190,7 @@ for dia in dias_planilha:
     media_rem_dia        = float(df_ate_dia['VALOR TOTAL'].count() / dias_corridos)
     media_fat_dia        = float(df_ate_dia['VALOR TOTAL'].sum() / dias_corridos)
     previsao_remocoes    = int(round(media_rem_dia * dias_no_mes))
-    previsao_faturamento = float(round(media_fat_dia * dias_no_mes))
+    previsao_faturamento = float(media_fat_dia * dias_no_mes)
 
     cursor.execute('''
         INSERT INTO kpi_historico

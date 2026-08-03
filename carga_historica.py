@@ -135,17 +135,21 @@ for chave, empresa in EMPRESAS.items():
                 df_dia        = pd.concat([df_dia_adulto, df_dia_neo], ignore_index=True)
 
                 df_ate_dia           = df_total[df_total['DATA'].dt.date <= dia]
-                dias_uteis           = df_ate_dia['DATA'].dt.date.nunique()
+
+                # Dias corridos desde o dia 1 do mês até o dia de corte (inclusive)
+                # Garante que previsão == consolidado quando o mês fecha
+                primeiro_dia_mes     = date(dia.year, dia.month, 1)
+                dias_corridos        = (dia - primeiro_dia_mes).days + 1
                 dias_no_mes          = calendar.monthrange(dia.year, dia.month)[1]
                 valor_consolidado    = float(df_ate_dia['VALOR TOTAL'].sum())
                 faturamento_dia      = float(df_dia['VALOR TOTAL'].sum())
                 km_dia               = float(df_dia[col_km].sum()) if col_km else 0.0
                 remocoes_dia         = float(len(df_dia))
                 ticket_medio         = float(df_dia['VALOR TOTAL'].mean()) if len(df_dia) > 0 else 0.0
-                media_rem_dia        = float(len(df_ate_dia) / dias_uteis)
-                media_fat_dia        = float(df_ate_dia['VALOR TOTAL'].sum() / dias_uteis)
+                media_rem_dia        = float(len(df_ate_dia) / dias_corridos)
+                media_fat_dia        = float(df_ate_dia['VALOR TOTAL'].sum() / dias_corridos)
                 previsao_remocoes    = int(round(media_rem_dia * dias_no_mes))
-                previsao_faturamento = float(round(media_fat_dia * dias_no_mes))
+                previsao_faturamento = float(media_fat_dia * dias_no_mes)
 
                 cursor.execute('''
                     INSERT INTO kpi_historico
