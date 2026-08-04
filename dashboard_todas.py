@@ -96,14 +96,26 @@ for chave, info in EMPRESAS.items():
     df_emp = df[df['empresa'] == chave]
     if df_emp.empty:
         continue
+    # Dias corridos do dia 1 até a data de corte mais recente da empresa.
+    # kpi_historico só tem linha nos dias com remoção, então usar .mean() sobre
+    # as linhas existentes dividiria por "dias com movimento" e inflaria as médias.
+    corte_emp = pd.to_datetime(df_emp['data_corte']).max().date()
+    primeiro_dia_mes = date(corte_emp.year, corte_emp.month, 1)
+    # Guard defensivo: corte_emp é o maior data_corte já gravado, então em operação
+    # normal nunca é futuro. Se o ETL gravasse uma data à frente de hoje, o divisor
+    # passaria a contar dias que ainda não aconteceram e derrubaria as médias.
+    corte_emp = min(corte_emp, date.today())
+    dias_corridos = max((corte_emp - primeiro_dia_mes).days + 1, 1)
+
     # Somas e médias do mês todo
     valor_consolidado  = df_emp['faturamento_dia'].sum()
-    faturamento_dia    = df_emp['faturamento_dia'].mean()
     remocoes_adulto    = int(df_emp['remocoes_adulto'].sum())
     remocoes_neonatal  = int(df_emp['remocoes_neonatal'].sum())
-    remocoes_dia       = df_emp['remocoes_dia'].mean()
-    km_dia             = df_emp['km_dia'].mean()
-    ticket_medio       = df_emp['ticket_medio'].mean()
+    total_remocoes     = remocoes_adulto + remocoes_neonatal
+    faturamento_dia    = valor_consolidado / dias_corridos
+    remocoes_dia       = df_emp['remocoes_dia'].sum() / dias_corridos
+    km_dia             = df_emp['km_dia'].sum() / dias_corridos
+    ticket_medio       = valor_consolidado / total_remocoes if total_remocoes else 0.0
     ultimo = df_emp.sort_values("data_corte").iloc[-1]
     previsao_remocoes    = int(ultimo['previsao_remocoes'])
     previsao_faturamento = float(ultimo['previsao_faturamento'])
