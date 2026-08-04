@@ -23,7 +23,7 @@ python3 atualizar_kpi_multi.py falcon
 
 ```bash
 cd ~/Desktop/Estudos/KPI_maismed
-python3 atualizar_kpi_multi.py maismed --mes 06 && python3 atualizar_kpi_multi.py alfa --mes 06 && python3 atualizar_kpi_multi.py humanize --mes 06 && python3 atualizar_kpi_multi.py sert --mes 06 && python3 atualizar_kpi_multi.py falcon --mes 06
+python3 atualizar_kpi_multi.py maismed --mes 07 && python3 atualizar_kpi_multi.py alfa --mes 07 && python3 atualizar_kpi_multi.py humanize --mes 07 && python3 atualizar_kpi_multi.py sert --mes 07 && python3 atualizar_kpi_multi.py falcon --mes 07
 ```
 
 ## Reprocessar um dia específico
