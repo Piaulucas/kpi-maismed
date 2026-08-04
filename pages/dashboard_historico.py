@@ -3,6 +3,7 @@ import pandas as pd
 import psycopg2
 import plotly.graph_objects as go
 from datetime import date
+import calendar
 import os
 
 st.set_page_config(page_title="Análise Histórica — Todas as Empresas", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
@@ -115,6 +116,17 @@ df = df[df['empresa'].isin(empresas_sel)]
 periodo_label = f"{meses[mes_ini]}/{ano_ini} → {meses[mes_fim]}/{ano_fim}"
 st.markdown(f"<div class='secao'>📅 {periodo_label}</div>", unsafe_allow_html=True)
 
+# Dias corridos do período selecionado no filtro (1º dia do mês inicial até o
+# último dia do mês final), e não o intervalo das linhas retornadas: kpi_historico
+# só tem registro nos dias com remoção, então dividir pelas linhas existentes usaria
+# "dias com movimento" como divisor e inflaria as médias.
+periodo_ini   = date(ano_ini, mes_ini, 1)
+periodo_fim   = date(ano_fim, mes_fim, calendar.monthrange(ano_fim, mes_fim)[1])
+# Se o mês final for o mês corrente, o mês ainda está em andamento: contar até o
+# último dia do calendário incluiria dias que não aconteceram e diluiria as médias.
+periodo_fim   = min(periodo_fim, date.today())
+dias_corridos = max((periodo_fim - periodo_ini).days + 1, 1)
+
 # ── Cards de totais por empresa
 st.markdown("<div class='secao'>Totais do Período por Empresa</div>", unsafe_allow_html=True)
 cols = st.columns(len(EMPRESAS_ATIVAS))
@@ -127,9 +139,10 @@ for i, (chave, info) in enumerate(EMPRESAS_ATIVAS.items()):
     fat_total   = df_emp['faturamento_dia'].sum()
     rem_adulto  = int(df_emp['remocoes_adulto'].sum())
     rem_neo     = int(df_emp['remocoes_neonatal'].sum())
-    rem_dia     = df_emp['remocoes_dia'].mean()
-    km_dia      = df_emp['km_dia'].mean()
-    ticket      = df_emp['ticket_medio'].mean()
+    total_rem   = rem_adulto + rem_neo
+    rem_dia     = df_emp['remocoes_dia'].sum() / dias_corridos
+    km_dia      = df_emp['km_dia'].sum() / dias_corridos
+    ticket      = fat_total / total_rem if total_rem else 0.0
     meses_count = df_emp['ano_mes'].nunique()
 
     cols[i].markdown(f"""
@@ -142,7 +155,7 @@ for i, (chave, info) in enumerate(EMPRESAS_ATIVAS.items()):
             <b>{rem_adulto}</b> adulto · <b>{rem_neo}</b> neonatal<br>
             Rem/dia: <b>{num(rem_dia)}</b> · Km/dia: <b>{num(km_dia, 0)}</b><br>
             Ticket médio: <b>{brl(ticket)}</b><br>
-            <span style='color:#aaa'>{meses_count} mês(es) com dados</span>
+            <span style='color:#aaa'>{meses_count} mês(es) com dados · {dias_corridos} dias corridos</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -177,16 +190,35 @@ fig_bar.update_layout(
 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ── Gráfico de evolução mensal (linha) por KPI selecionado
-kpi_map = {
-    "Faturamento":  ("faturamento_dia",   "sum",  "R$ "),
-    "Remoções":     ("remocoes_dia",       "sum",  ""),
-    "Km/dia":       ("km_dia",             "mean", ""),
-    "Ticket Médio": ("ticket_medio",       "mean", "R$ "),
-}
-col_kpi, agg_kpi, prefix_kpi = kpi_map[kpi_sel]
+def dias_corridos_mes(periodo):
+    """Dias corridos do mês, sem contar dias futuros quando é o mês corrente."""
+    ini = periodo.start_time.date()
+    fim = min(periodo.end_time.date(), date.today())
+    return max((fim - ini).days + 1, 1)
+
+prefixos = {"Faturamento": "R$ ", "Remoções": "", "Km/dia": "", "Ticket Médio": "R$ "}
+prefix_kpi = prefixos[kpi_sel]
 st.markdown(f"<div class='secao'>Evolução Mensal — {kpi_sel}</div>", unsafe_allow_html=True)
 
-df_line = df.groupby(['ano_mes', 'empresa'])[col_kpi].agg(agg_kpi).reset_index()
+# Faturamento e Remoções são totais do mês. Km/dia divide pelos dias corridos do mês
+# (não pelas linhas existentes, que só cobrem os dias com remoção) e Ticket Médio é
+# faturamento total / remoções totais — nunca média das médias diárias.
+df_line = df.groupby(['ano_mes', 'empresa']).agg(
+    faturamento=('faturamento_dia', 'sum'),
+    remocoes=('remocoes_dia', 'sum'),
+    km=('km_dia', 'sum'),
+).reset_index()
+
+if kpi_sel == "Faturamento":
+    df_line['valor'] = df_line['faturamento']
+elif kpi_sel == "Remoções":
+    df_line['valor'] = df_line['remocoes']
+elif kpi_sel == "Km/dia":
+    df_line['valor'] = df_line['km'] / df_line['ano_mes'].apply(dias_corridos_mes)
+else:  # Ticket Médio
+    df_line['valor'] = df_line.apply(
+        lambda r: r['faturamento'] / r['remocoes'] if r['remocoes'] else 0.0, axis=1
+    )
 
 fig_line = go.Figure()
 for chave, info in EMPRESAS_ATIVAS.items():
@@ -194,7 +226,7 @@ for chave, info in EMPRESAS_ATIVAS.items():
     vals = []
     for p in periodos:
         row = df_e[df_e['ano_mes'] == p]
-        vals.append(float(row[col_kpi].values[0]) if not row.empty else None)
+        vals.append(float(row['valor'].values[0]) if not row.empty else None)
     fig_line.add_trace(go.Scatter(
         name=info['nome'], x=labels, y=vals,
         mode='lines+markers',
