@@ -123,30 +123,33 @@ for chave, info in EMPRESAS.items():
     ticket_medio       = valor_consolidado / total_remocoes if total_remocoes else 0.0
     ultimo = df_emp.sort_values("data_corte").iloc[-1]
 
-    prev_faturamento_html = ""
-    prev_remocoes_html = ""
+    kpi_items = [
+        f"<div class='kpi-item'><div class='kpi-label'>Valor Consolidado</div><div class='kpi-value'>{brl(valor_consolidado)}</div></div>",
+        f"<div class='kpi-item'><div class='kpi-label'>Faturamento/dia</div><div class='kpi-value'>{brl(faturamento_dia)}</div></div>",
+    ]
     if not mes_fechado:
         previsao_remocoes    = int(ultimo['previsao_remocoes'])
         previsao_faturamento = float(ultimo['previsao_faturamento'])
-        prev_faturamento_html = f"<div class='kpi-item'><div class='kpi-label'>Prev. Faturamento</div><div class='kpi-value'>{brl(previsao_faturamento)}</div></div>"
-        prev_remocoes_html = f"<div class='kpi-item'><div class='kpi-label'>Prev. Remoções</div><div class='kpi-value'>{previsao_remocoes}</div></div>"
+        kpi_items.append(f"<div class='kpi-item'><div class='kpi-label'>Prev. Faturamento</div><div class='kpi-value'>{brl(previsao_faturamento)}</div></div>")
+    kpi_items += [
+        f"<div class='kpi-item'><div class='kpi-label'>Adulto</div><div class='kpi-value'>{remocoes_adulto}</div></div>",
+        f"<div class='kpi-item'><div class='kpi-label'>Neonatal</div><div class='kpi-value'>{remocoes_neonatal}</div></div>",
+    ]
+    if not mes_fechado:
+        kpi_items.append(f"<div class='kpi-item'><div class='kpi-label'>Prev. Remoções</div><div class='kpi-value'>{previsao_remocoes}</div></div>")
+    kpi_items += [
+        f"<div class='kpi-item'><div class='kpi-label'>Rem/dia</div><div class='kpi-value'>{num(remocoes_dia, 1)}</div></div>",
+        f"<div class='kpi-item'><div class='kpi-label'>Km/dia</div><div class='kpi-value'>{num(km_dia, 0)}</div></div>",
+        f"<div class='kpi-item'><div class='kpi-label'>Ticket Médio</div><div class='kpi-value'>{brl(ticket_medio)}</div></div>",
+    ]
 
-    st.markdown(f"""
-    <div class='kpi-card' style='border-left-color: {info['cor']}'>
-        <div class='kpi-empresa' style='color: {info['cor']}'>{info['nome']}</div>
-        <div class='kpi-row'>
-            <div class='kpi-item'><div class='kpi-label'>Valor Consolidado</div><div class='kpi-value'>{brl(valor_consolidado)}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Faturamento/dia</div><div class='kpi-value'>{brl(faturamento_dia)}</div></div>
-            {prev_faturamento_html}
-            <div class='kpi-item'><div class='kpi-label'>Adulto</div><div class='kpi-value'>{remocoes_adulto}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Neonatal</div><div class='kpi-value'>{remocoes_neonatal}</div></div>
-            {prev_remocoes_html}
-            <div class='kpi-item'><div class='kpi-label'>Rem/dia</div><div class='kpi-value'>{num(remocoes_dia, 1)}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Km/dia</div><div class='kpi-value'>{num(km_dia, 0)}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Ticket Médio</div><div class='kpi-value'>{brl(ticket_medio)}</div></div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    card_html = (
+        f"<div class='kpi-card' style='border-left-color: {info['cor']}'>"
+        f"<div class='kpi-empresa' style='color: {info['cor']}'>{info['nome']}</div>"
+        f"<div class='kpi-row'>{''.join(kpi_items)}</div>"
+        f"</div>"
+    )
+    st.markdown(card_html, unsafe_allow_html=True)
 
 st.markdown("<div class='secao'>Evolução Diária por Empresa</div>", unsafe_allow_html=True)
 
