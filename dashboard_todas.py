@@ -87,6 +87,11 @@ if df.empty:
     st.warning("Nenhum dado encontrado.")
     st.stop()
 
+# Mês selecionado já fechado (primeiro dia do mês seguinte já chegou) => a previsão
+# não faz mais sentido, então os campos de previsão saem do card.
+proximo_mes = date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)
+mes_fechado = proximo_mes <= date.today()
+
 corte_max = pd.to_datetime(df['data_corte']).max().strftime('%d/%m/%Y')
 st.markdown(f"<div class='secao'>📅 {meses[mes]}/{ano} · Corte: {corte_max}</div>", unsafe_allow_html=True)
 
@@ -117,8 +122,14 @@ for chave, info in EMPRESAS.items():
     km_dia             = df_emp['km_dia'].sum() / dias_corridos
     ticket_medio       = valor_consolidado / total_remocoes if total_remocoes else 0.0
     ultimo = df_emp.sort_values("data_corte").iloc[-1]
-    previsao_remocoes    = int(ultimo['previsao_remocoes'])
-    previsao_faturamento = float(ultimo['previsao_faturamento'])
+
+    prev_faturamento_html = ""
+    prev_remocoes_html = ""
+    if not mes_fechado:
+        previsao_remocoes    = int(ultimo['previsao_remocoes'])
+        previsao_faturamento = float(ultimo['previsao_faturamento'])
+        prev_faturamento_html = f"<div class='kpi-item'><div class='kpi-label'>Prev. Faturamento</div><div class='kpi-value'>{brl(previsao_faturamento)}</div></div>"
+        prev_remocoes_html = f"<div class='kpi-item'><div class='kpi-label'>Prev. Remoções</div><div class='kpi-value'>{previsao_remocoes}</div></div>"
 
     st.markdown(f"""
     <div class='kpi-card' style='border-left-color: {info['cor']}'>
@@ -126,10 +137,10 @@ for chave, info in EMPRESAS.items():
         <div class='kpi-row'>
             <div class='kpi-item'><div class='kpi-label'>Valor Consolidado</div><div class='kpi-value'>{brl(valor_consolidado)}</div></div>
             <div class='kpi-item'><div class='kpi-label'>Faturamento/dia</div><div class='kpi-value'>{brl(faturamento_dia)}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Prev. Faturamento</div><div class='kpi-value'>{brl(previsao_faturamento)}</div></div>
+            {prev_faturamento_html}
             <div class='kpi-item'><div class='kpi-label'>Adulto</div><div class='kpi-value'>{remocoes_adulto}</div></div>
             <div class='kpi-item'><div class='kpi-label'>Neonatal</div><div class='kpi-value'>{remocoes_neonatal}</div></div>
-            <div class='kpi-item'><div class='kpi-label'>Prev. Remoções</div><div class='kpi-value'>{previsao_remocoes}</div></div>
+            {prev_remocoes_html}
             <div class='kpi-item'><div class='kpi-label'>Rem/dia</div><div class='kpi-value'>{num(remocoes_dia, 1)}</div></div>
             <div class='kpi-item'><div class='kpi-label'>Km/dia</div><div class='kpi-value'>{num(km_dia, 0)}</div></div>
             <div class='kpi-item'><div class='kpi-label'>Ticket Médio</div><div class='kpi-value'>{brl(ticket_medio)}</div></div>
