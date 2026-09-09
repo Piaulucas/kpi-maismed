@@ -5,6 +5,8 @@ import plotly.graph_objects as go
 from datetime import date
 import os
 
+from kpi_calc import calcular_kpis_empresa
+
 st.set_page_config(page_title="KPI Mensal — Todas as Empresas", page_icon="🏥", layout="wide")
 
 st.markdown("""
@@ -87,11 +89,6 @@ if df.empty:
     st.warning("Nenhum dado encontrado.")
     st.stop()
 
-# Mês selecionado já fechado (primeiro dia do mês seguinte já chegou) => a previsão
-# não faz mais sentido, então os campos de previsão saem do card.
-proximo_mes = date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)
-mes_fechado = proximo_mes <= date.today()
-
 corte_max = pd.to_datetime(df['data_corte']).max().strftime('%d/%m/%Y')
 st.markdown(f"<div class='secao'>📅 {meses[mes]}/{ano} · Corte: {corte_max}</div>", unsafe_allow_html=True)
 
@@ -101,35 +98,23 @@ for chave, info in EMPRESAS.items():
     df_emp = df[df['empresa'] == chave]
     if df_emp.empty:
         continue
-    # Dias corridos do dia 1 até a data de corte mais recente da empresa.
-    # kpi_historico só tem linha nos dias com remoção, então usar .mean() sobre
-    # as linhas existentes dividiria por "dias com movimento" e inflaria as médias.
-    corte_emp = pd.to_datetime(df_emp['data_corte']).max().date()
-    primeiro_dia_mes = date(corte_emp.year, corte_emp.month, 1)
-    # Guard defensivo: corte_emp é o maior data_corte já gravado, então em operação
-    # normal nunca é futuro. Se o ETL gravasse uma data à frente de hoje, o divisor
-    # passaria a contar dias que ainda não aconteceram e derrubaria as médias.
-    corte_emp = min(corte_emp, date.today())
-    dias_corridos = max((corte_emp - primeiro_dia_mes).days + 1, 1)
-
-    # Somas e médias do mês todo
-    valor_consolidado  = df_emp['faturamento_dia'].sum()
-    remocoes_adulto    = int(df_emp['remocoes_adulto'].sum())
-    remocoes_neonatal  = int(df_emp['remocoes_neonatal'].sum())
-    total_remocoes     = remocoes_adulto + remocoes_neonatal
-    faturamento_dia    = valor_consolidado / dias_corridos
-    remocoes_dia       = df_emp['remocoes_dia'].sum() / dias_corridos
-    km_dia             = df_emp['km_dia'].sum() / dias_corridos
-    ticket_medio       = valor_consolidado / total_remocoes if total_remocoes else 0.0
-    ultimo = df_emp.sort_values("data_corte").iloc[-1]
+    kpis = calcular_kpis_empresa(df_emp, hoje=hoje)
+    valor_consolidado    = kpis['valor_consolidado']
+    remocoes_adulto      = kpis['remocoes_adulto']
+    remocoes_neonatal    = kpis['remocoes_neonatal']
+    faturamento_dia      = kpis['faturamento_dia']
+    remocoes_dia         = kpis['remocoes_dia']
+    km_dia               = kpis['km_dia']
+    ticket_medio         = kpis['ticket_medio']
+    mes_fechado          = kpis['mes_fechado']
 
     kpi_items = [
         f"<div class='kpi-item'><div class='kpi-label'>Valor Consolidado</div><div class='kpi-value'>{brl(valor_consolidado)}</div></div>",
         f"<div class='kpi-item'><div class='kpi-label'>Faturamento/dia</div><div class='kpi-value'>{brl(faturamento_dia)}</div></div>",
     ]
     if not mes_fechado:
-        previsao_remocoes    = int(ultimo['previsao_remocoes'])
-        previsao_faturamento = float(ultimo['previsao_faturamento'])
+        previsao_remocoes    = kpis['previsao_remocoes']
+        previsao_faturamento = kpis['previsao_faturamento']
         kpi_items.append(f"<div class='kpi-item'><div class='kpi-label'>Prev. Faturamento</div><div class='kpi-value'>{brl(previsao_faturamento)}</div></div>")
     kpi_items += [
         f"<div class='kpi-item'><div class='kpi-label'>Adulto</div><div class='kpi-value'>{remocoes_adulto}</div></div>",

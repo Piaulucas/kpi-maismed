@@ -5,7 +5,27 @@ import plotly.graph_objects as go
 from datetime import date
 import os
 
+from kpi_calc import calcular_kpis_empresa
+
 st.set_page_config(page_title="KPI — Alfa + Humanize", page_icon="🏥", layout="wide")
+
+st.markdown("""
+<style>
+    .kpi-card {
+        background: white;
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin-bottom: 10px;
+        border-left: 5px solid #ccc;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    .kpi-empresa { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .kpi-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .kpi-item { flex: 1; min-width: 100px; }
+    .kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #888; margin-bottom: 2px; }
+    .kpi-value { font-size: 18px; font-weight: 700; color: #1a1a2e; }
+</style>
+""", unsafe_allow_html=True)
 
 EMPRESAS = {
     'alfa':     {'nome': 'Alfa Saúde',         'cor': '#ff7f0e'},
@@ -66,25 +86,41 @@ st.markdown(f"**{meses[mes]}/{ano}**")
 st.divider()
 
 st.markdown("### 📊 KPIs por Empresa")
-cols = st.columns(len(EMPRESAS))
 
-for i, (chave, info) in enumerate(EMPRESAS.items()):
+for chave, info in EMPRESAS.items():
     df_emp = df[df['empresa'] == chave]
     if df_emp.empty:
-        cols[i].warning(f"{info['nome']}\nSem dados")
+        st.warning(f"{info['nome']}\nSem dados")
         continue
-    ultimo = df_emp.sort_values("data_corte").iloc[-1]
-    with cols[i]:
-        st.markdown(f"**{info['nome']}**")
-        st.metric("💰 Valor Consolidado", brl(ultimo['valor_consolidado']))
-        st.metric("💵 Faturamento/dia", brl(ultimo['faturamento_dia']))
-        st.metric("📈 Prev. Faturamento", brl(ultimo['previsao_faturamento']))
-        st.metric("🚑 Adulto", int(ultimo['remocoes_adulto']))
-        st.metric("👶 Neonatal", int(ultimo['remocoes_neonatal']))
-        st.metric("📦 Prev. Remoções", int(ultimo['previsao_remocoes']))
-        st.metric("📊 Rem/dia", num(ultimo['remocoes_dia']))
-        st.metric("🛣️ Km/dia", num(ultimo['km_dia']))
-        st.metric("🎫 Ticket Médio", brl(ultimo['ticket_medio']))
+
+    kpis = calcular_kpis_empresa(df_emp, hoje=hoje)
+    mes_fechado = kpis['mes_fechado']
+
+    kpi_items = [
+        f"<div class='kpi-item'><div class='kpi-label'>Valor Consolidado</div><div class='kpi-value'>{brl(kpis['valor_consolidado'])}</div></div>",
+        f"<div class='kpi-item'><div class='kpi-label'>Faturamento/dia</div><div class='kpi-value'>{brl(kpis['faturamento_dia'])}</div></div>",
+    ]
+    if not mes_fechado:
+        kpi_items.append(f"<div class='kpi-item'><div class='kpi-label'>Prev. Faturamento</div><div class='kpi-value'>{brl(kpis['previsao_faturamento'])}</div></div>")
+    kpi_items += [
+        f"<div class='kpi-item'><div class='kpi-label'>Adulto</div><div class='kpi-value'>{kpis['remocoes_adulto']}</div></div>",
+        f"<div class='kpi-item'><div class='kpi-label'>Neonatal</div><div class='kpi-value'>{kpis['remocoes_neonatal']}</div></div>",
+    ]
+    if not mes_fechado:
+        kpi_items.append(f"<div class='kpi-item'><div class='kpi-label'>Prev. Remoções</div><div class='kpi-value'>{kpis['previsao_remocoes']}</div></div>")
+    kpi_items += [
+        f"<div class='kpi-item'><div class='kpi-label'>Rem/dia</div><div class='kpi-value'>{num(kpis['remocoes_dia'], 1)}</div></div>",
+        f"<div class='kpi-item'><div class='kpi-label'>Km/dia</div><div class='kpi-value'>{num(kpis['km_dia'], 0)}</div></div>",
+        f"<div class='kpi-item'><div class='kpi-label'>Ticket Médio</div><div class='kpi-value'>{brl(kpis['ticket_medio'])}</div></div>",
+    ]
+
+    card_html = (
+        f"<div class='kpi-card' style='border-left-color: {info['cor']}'>"
+        f"<div class='kpi-empresa' style='color: {info['cor']}'>{info['nome']}</div>"
+        f"<div class='kpi-row'>{''.join(kpi_items)}</div>"
+        f"</div>"
+    )
+    st.markdown(card_html, unsafe_allow_html=True)
 
 st.divider()
 
