@@ -1,6 +1,9 @@
 # Comandos — KPI Mais Med
 
 ## Atualizar banco de dados
+> Cada execução recalcula **todos os dias do mês** da planilha e substitui as linhas
+> daquele mês/empresa no banco numa única transação (se algo falhar, nada é gravado).
+> Editou um dia passado na planilha? É só rodar de novo — não precisa apagar nada antes.
 
 ### Todas as empresas
 ```bash
@@ -20,15 +23,27 @@ python3 atualizar_kpi_multi.py falcon
 
 ## Atualizar mês anterior (virada de mês)
 > Use quando virar o mês e precisar inserir os últimos dias do mês anterior.
+> `rodar_kpis.sh` já faz isso sozinho nos primeiros 5 dias do mês — rode os
+> comandos abaixo manualmente só se precisar reprocessar fora dessa janela.
+>
+> Importante: sempre passe `--ano` junto com `--mes`. Sem `--ano` o script usa
+> o ano de hoje, que é o ano errado para o mês anterior quando ele cai no ano
+> passado (virada de ano, ver exemplo abaixo).
 
 ```bash
 cd ~/Desktop/Estudos/KPI_maismed
-python3 atualizar_kpi_multi.py maismed --mes 08 && python3 atualizar_kpi_multi.py alfa --mes 08 && python3 atualizar_kpi_multi.py humanize --mes 08 && python3 atualizar_kpi_multi.py sert --mes 08 && python3 atualizar_kpi_multi.py falcon --mes 08
+python3 atualizar_kpi_multi.py maismed --mes 09 --ano 2026; python3 atualizar_kpi_multi.py alfa --mes 09 --ano 2026; python3 atualizar_kpi_multi.py humanize --mes 09 --ano 2026; python3 atualizar_kpi_multi.py sert --mes 09 --ano 2026; python3 atualizar_kpi_multi.py falcon --mes 09 --ano 2026
+```
+
+### Exemplo — virada de ano (hoje é janeiro, mês anterior é dezembro do ano passado)
+```bash
+cd ~/Desktop/Estudos/KPI_maismed
+python3 atualizar_kpi_multi.py maismed --mes 12 --ano 2026; python3 atualizar_kpi_multi.py alfa --mes 12 --ano 2026; python3 atualizar_kpi_multi.py humanize --mes 12 --ano 2026; python3 atualizar_kpi_multi.py sert --mes 12 --ano 2026; python3 atualizar_kpi_multi.py falcon --mes 12 --ano 2026
 ```
 
 ## Reprocessar um dia específico
-> Use quando corrigir um valor na planilha após já ter inserido no banco.
-> O script deleta o registro daquele dia e reinsere com os dados atuais.
+> Mantido por compatibilidade: hoje equivale a rodar o mês daquela data (o mês inteiro
+> é recalculado, não só o dia). Só confere, a mais, que o dia existe na planilha.
 
 ```bash
 cd ~/Desktop/Estudos/KPI_maismed
@@ -41,17 +56,11 @@ python3 atualizar_kpi_multi.py maismed --reprocessar 2026-05-15
 python3 atualizar_kpi_multi.py falcon --reprocessar 2026-05-10
 ```
 
-## Deletar um mês inteiro e reinserir (correção em massa)
-```sql
--- 1. Rodar no Supabase SQL Editor
-DELETE FROM kpi_historico
-WHERE EXTRACT(YEAR FROM data_corte) = 2026
-  AND EXTRACT(MONTH FROM data_corte) = 6;
-```
+## Rodar os testes
 ```bash
--- 2. Reinserir via script
 cd ~/Desktop/Estudos/KPI_maismed
-python3 atualizar_kpi_multi.py maismed && python3 atualizar_kpi_multi.py alfa && python3 atualizar_kpi_multi.py humanize && python3 atualizar_kpi_multi.py sert && python3 atualizar_kpi_multi.py falcon
+python3 -m pip install -r requirements-dev.txt
+python3 -m pytest -q
 ```
 
 ## Carga histórica (uso único)

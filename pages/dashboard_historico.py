@@ -3,8 +3,13 @@ import pandas as pd
 import psycopg2
 import plotly.graph_objects as go
 from datetime import date
-import calendar
 import os
+import sys
+
+# pages/ roda com o diretório do app principal no path em produção; garante o
+# import do kpi_calc também ao rodar a página isoladamente.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from kpi_calc import datas_corte_ref_por_mes, dias_corridos_mes, dias_corridos_periodo
 
 st.set_page_config(page_title="Análise Histórica — Todas as Empresas", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
 
@@ -110,22 +115,20 @@ if not empresas_sel:
     st.warning("Selecione ao menos uma empresa.")
     st.stop()
 
+# Data de corte de referência de cada mês: calculada ANTES do filtro de empresas,
+# sobre todas as empresas do mês (regra do divisor em kpi_calc).
+refs_corte = datas_corte_ref_por_mes(df)
+
 EMPRESAS_ATIVAS = {k: v for k, v in EMPRESAS.items() if k in empresas_sel}
 df = df[df['empresa'].isin(empresas_sel)]
 
 periodo_label = f"{meses[mes_ini]}/{ano_ini} → {meses[mes_fim]}/{ano_fim}"
 st.markdown(f"<div class='secao'>📅 {periodo_label}</div>", unsafe_allow_html=True)
 
-# Dias corridos do período selecionado no filtro (1º dia do mês inicial até o
-# último dia do mês final), e não o intervalo das linhas retornadas: kpi_historico
-# só tem registro nos dias com remoção, então dividir pelas linhas existentes usaria
-# "dias com movimento" como divisor e inflaria as médias.
-periodo_ini   = date(ano_ini, mes_ini, 1)
-periodo_fim   = date(ano_fim, mes_fim, calendar.monthrange(ano_fim, mes_fim)[1])
-# Se o mês final for o mês corrente, o mês ainda está em andamento: contar até o
-# último dia do calendário incluiria dias que não aconteceram e diluiria as médias.
-periodo_fim   = min(periodo_fim, date.today())
-dias_corridos = max((periodo_fim - periodo_ini).days + 1, 1)
+# Dias corridos do período selecionado no filtro (soma da regra de kpi_calc mês a
+# mês), e não o intervalo das linhas retornadas: kpi_historico só tem registro nos
+# dias com remoção, então dividir pelas linhas existentes inflaria as médias.
+dias_corridos = dias_corridos_periodo(ano_ini, mes_ini, ano_fim, mes_fim, hoje, refs_corte)
 
 # ── Cards de totais por empresa
 st.markdown("<div class='secao'>Totais do Período por Empresa</div>", unsafe_allow_html=True)
@@ -190,11 +193,10 @@ fig_bar.update_layout(
 st.plotly_chart(fig_bar, use_container_width=True)
 
 # ── Gráfico de evolução mensal (linha) por KPI selecionado
-def dias_corridos_mes(periodo):
-    """Dias corridos do mês, sem contar dias futuros quando é o mês corrente."""
-    ini = periodo.start_time.date()
-    fim = min(periodo.end_time.date(), date.today())
-    return max((fim - ini).days + 1, 1)
+def dias_corridos_do_periodo_mensal(periodo):
+    """Divisor do mês (pd.Period) pela regra de kpi_calc."""
+    ref = refs_corte.get((periodo.year, periodo.month))
+    return max(dias_corridos_mes(periodo.year, periodo.month, hoje, ref), 1)
 
 prefixos = {"Faturamento": "R$ ", "Remoções": "", "Km/dia": "", "Ticket Médio": "R$ "}
 prefix_kpi = prefixos[kpi_sel]
@@ -214,7 +216,7 @@ if kpi_sel == "Faturamento":
 elif kpi_sel == "Remoções":
     df_line['valor'] = df_line['remocoes']
 elif kpi_sel == "Km/dia":
-    df_line['valor'] = df_line['km'] / df_line['ano_mes'].apply(dias_corridos_mes)
+    df_line['valor'] = df_line['km'] / df_line['ano_mes'].apply(dias_corridos_do_periodo_mensal)
 else:  # Ticket Médio
     df_line['valor'] = df_line.apply(
         lambda r: r['faturamento'] / r['remocoes'] if r['remocoes'] else 0.0, axis=1
