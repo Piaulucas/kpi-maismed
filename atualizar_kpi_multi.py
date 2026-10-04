@@ -226,7 +226,9 @@ def main(argv):
     import psycopg2
     from dotenv import load_dotenv
 
-    load_dotenv()
+    # Caminho explícito: quando rodado pelo launchd (WorkingDirectory != cwd
+    # de quem chama), load_dotenv() sem argumento não acharia o .env.
+    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'))
 
     DB_HOST = os.getenv('DB_HOST')
     DB_PORT = os.getenv('DB_PORT', '5432')

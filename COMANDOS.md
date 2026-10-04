@@ -11,6 +11,15 @@ cd ~/Desktop/Estudos/KPI_maismed
 python3 atualizar_kpi_multi.py maismed && python3 atualizar_kpi_multi.py alfa && python3 atualizar_kpi_multi.py humanize && python3 atualizar_kpi_multi.py sert && python3 atualizar_kpi_multi.py falcon
 ```
 
+## Atualizar todas as empresas de um mês específico
+> Use para fechamento depois do dia 5 (quando `rodar_kpis.sh` já não roda mais o mês
+> anterior sozinho) ou para reprocessar um mês inteiro de propósito.
+
+```bash
+cd ~/Desktop/Estudos/KPI_maismed
+./rodar_kpis.sh --mes 9 --ano 2026
+```
+
 ### Empresa específica
 ```bash
 cd ~/Desktop/Estudos/KPI_maismed
@@ -55,6 +64,35 @@ python3 atualizar_kpi_multi.py <empresa> --reprocessar YYYY-MM-DD
 python3 atualizar_kpi_multi.py maismed --reprocessar 2026-05-15
 python3 atualizar_kpi_multi.py falcon --reprocessar 2026-05-10
 ```
+
+## Agendamento (launchd — macOS)
+> `rodar_kpis.sh` roda todo dia às 15h via launchd (agent `com.piau.kpi`,
+> definido em `launchd/com.piau.kpi.plist`). Se o Mac estava dormindo às 15h,
+> o launchd dispara assim que ele acordar.
+
+Ver status (mostra PID se estiver rodando, e o código de saída da última execução):
+```bash
+launchctl print gui/$(id -u)/com.piau.kpi
+```
+
+Rodar agora, fora do horário agendado:
+```bash
+launchctl kickstart -k gui/$(id -u)/com.piau.kpi
+```
+
+Desativar (para de rodar até o próximo bootstrap):
+```bash
+launchctl bootout gui/$(id -u)/com.piau.kpi
+```
+
+Reativar depois de um `bootout`:
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.piau.kpi.plist
+```
+
+Logs:
+- `kpi_cron.log` — saída do próprio `rodar_kpis.sh`/`atualizar_kpi_multi.py` (por empresa/mês + resumo final).
+- `kpi_launchd.log` — stdout/stderr do processo que o launchd disparou (erros de lançamento, antes do Python conseguir rodar).
 
 ## Rodar os testes
 ```bash
