@@ -20,19 +20,61 @@ Uso:
     rodar_kpis.py --dry-run AAAA-MM-DD   # idem, simulando outra data de "hoje"
     rodar_kpis.py --mes M --ano AAAA [--dry-run]   # roda só esse mês, 5 empresas
 
-Salva log em kpi_cron.log (e imprime o resumo também no stdout).
+Em modo real, ao final: acrescenta o resumo no kpi_cron.log, imprime no
+stdout, abre uma janela com o resumo completo e dispara um banner curto (via
+osascript, sem esperar). O kpi_cron.log é podado para as últimas ~2.000 linhas.
 """
 import subprocess
 import sys
 from datetime import date, datetime
 from pathlib import Path
+from typing import NamedTuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from atualizar_kpi_multi import EMPRESAS, EXIT_PLANILHA_NAO_ENCONTRADA, mes_anterior
+from atualizar_kpi_multi import (
+    EMPRESAS,
+    EXIT_DATA_FORA_DO_MES,
+    EXIT_DATA_INVALIDA,
+    EXIT_LANCAMENTO_SEM_PACIENTE,
+    EXIT_PLANILHA_NAO_ENCONTRADA,
+    EXIT_PLANILHA_VAZIA,
+    PREFIXO_DETALHE,
+    mes_anterior,
+)
 
 LOG = SCRIPT_DIR / "kpi_cron.log"
+MAX_LINHAS_LOG = 2000
+
+MESES_ABREV = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun',
+               'jul', 'ago', 'set', 'out', 'nov', 'dez']
+
+# O texto vai por argv (on run argv), nunca interpolado no script: aspas e
+# quebras de linha do resumo não precisam de escape.
+SCRIPT_JANELA = '''on run argv
+    set texto to item 1 of argv
+    set titulo to item 2 of argv
+    activate
+    if item 3 of argv is "caution" then
+        display dialog texto with title titulo buttons {"OK"} default button "OK" giving up after 1800 with icon caution
+    else
+        display dialog texto with title titulo buttons {"OK"} default button "OK" giving up after 1800 with icon note
+    end if
+end run'''
+
+SCRIPT_BANNER = '''on run argv
+    display notification (item 2 of argv) with title (item 1 of argv)
+end run'''
+
+
+class Resultado(NamedTuple):
+    empresa: str
+    mes: int
+    ano: int
+    nivel: str          # OK / AVISO / FALHA
+    texto: str          # ex.: "FALHA — DATA ERRADA"
+    detalhes: tuple = ()
 
 
 class ArgsInvalidos(Exception):
@@ -97,9 +139,42 @@ def log(msg):
         f.write(msg + "\n")
 
 
+def ultima_linha_de_erro(saida):
+    """Última linha com ❌ da saída do ETL; sem ela (ex.: traceback), a última
+    linha não vazia."""
+    linhas = [l.strip() for l in saida.splitlines() if l.strip()]
+    for linha in reversed(linhas):
+        if '❌' in linha:
+            return linha.replace('❌', '').strip()
+    return linhas[-1] if linhas else ''
+
+
+def classificar(returncode, saida, pode_ser_aviso):
+    """Código de saída do ETL -> (nivel, texto, detalhes)."""
+    if returncode == 0:
+        return 'OK', 'OK', ()
+    if returncode == EXIT_PLANILHA_VAZIA:
+        return 'AVISO', 'AVISO — planilha sem lançamentos', ()
+    if returncode == EXIT_PLANILHA_NAO_ENCONTRADA:
+        if pode_ser_aviso:
+            return 'AVISO', 'AVISO — planilha do mês ainda não criada', ()
+        return 'FALHA', 'FALHA — planilha não encontrada', ()
+    falhas_com_detalhe = {
+        EXIT_DATA_FORA_DO_MES: 'FALHA — DATA ERRADA',
+        EXIT_LANCAMENTO_SEM_PACIENTE: 'FALHA — LANÇAMENTO SEM PACIENTE',
+        EXIT_DATA_INVALIDA: 'FALHA — DATA VAZIA OU INVÁLIDA',
+    }
+    if returncode in falhas_com_detalhe:
+        detalhes = tuple(l[len(PREFIXO_DETALHE):] for l in saida.splitlines()
+                         if l.startswith(PREFIXO_DETALHE))
+        return 'FALHA', falhas_com_detalhe[returncode], detalhes
+    erro = ultima_linha_de_erro(saida) or f'código {returncode}'
+    return 'FALHA', f'FALHA — {erro}', ()
+
+
 def rodar_empresa_mes(empresa, mes, ano, pode_ser_aviso):
     """Roda o ETL de uma empresa/mês via subprocess (mesmo interpretador:
-    sys.executable), grava a saída no log e devolve o status (OK/AVISO/FALHA).
+    sys.executable), grava a saída no log e devolve um Resultado.
 
     pode_ser_aviso: True só quando "planilha não encontrada" é esperado nesse
     contexto (mês corrente, dia 1). Fora disso, vira sempre FALHA.
@@ -114,19 +189,10 @@ def rodar_empresa_mes(empresa, mes, ano, pode_ser_aviso):
     if saida:
         log(saida)
 
-    if resultado.returncode == 0:
-        status = "OK"
-    elif resultado.returncode == EXIT_PLANILHA_NAO_ENCONTRADA:
-        if pode_ser_aviso:
-            log("⚠️  Aviso esperado (planilha do mês corrente ainda não existe no dia 1).")
-            status = "AVISO"
-        else:
-            log("❌ Planilha não encontrada (fora do esperado).")
-            status = "FALHA"
-    else:
-        log(f"❌ Falha ao processar {empresa} ({mes:02d}/{ano}) — código {resultado.returncode}.")
-        status = "FALHA"
-    return status
+    nivel, texto, detalhes = classificar(resultado.returncode, saida, pode_ser_aviso)
+    if nivel != 'OK':
+        log(f"{texto} (código {resultado.returncode})")
+    return Resultado(empresa, mes, ano, nivel, texto, detalhes)
 
 
 def listar_execucoes_virada(hoje):
@@ -159,7 +225,7 @@ def modo_virada(hoje, dry_run):
                 print(f"  {sys.executable} atualizar_kpi_multi.py {empresa} --mes {mes:02d} --ano {ano}")
         return
 
-    resumo = []
+    resultados = []
     log("=" * 30)
     log(f"{datetime.now():%Y-%m-%d %H:%M:%S} — Iniciando atualização")
 
@@ -167,10 +233,9 @@ def modo_virada(hoje, dry_run):
         for mes, ano in execucoes:
             eh_mes_corrente = (mes, ano) == (hoje.month, hoje.year)
             pode_ser_aviso = eh_mes_corrente and hoje.day == 1
-            status = rodar_empresa_mes(empresa, mes, ano, pode_ser_aviso)
-            resumo.append(f"{empresa} {mes:02d}/{ano}: {status}")
+            resultados.append(rodar_empresa_mes(empresa, mes, ano, pode_ser_aviso))
 
-    _fechar_resumo(resumo)
+    finalizar(resultados)
 
 
 def modo_mes_especifico(mes, ano, dry_run):
@@ -180,26 +245,93 @@ def modo_mes_especifico(mes, ano, dry_run):
             print(f"  {sys.executable} atualizar_kpi_multi.py {empresa} --mes {mes:02d} --ano {ano}")
         return
 
-    resumo = []
+    resultados = []
     log("=" * 30)
     log(f"{datetime.now():%Y-%m-%d %H:%M:%S} — Iniciando atualização (mês específico {mes:02d}/{ano})")
 
     for empresa in EMPRESAS:
-        status = rodar_empresa_mes(empresa, mes, ano, pode_ser_aviso=False)
-        resumo.append(f"{empresa} {mes:02d}/{ano}: {status}")
+        resultados.append(rodar_empresa_mes(empresa, mes, ano, pode_ser_aviso=False))
 
-    _fechar_resumo(resumo)
+    finalizar(resultados)
 
 
-def _fechar_resumo(resumo):
+def montar_resumo(resultados, quando):
+    """Texto do resumo: cabeçalho + uma empresa/mês por linha, com os
+    detalhes (ex.: linhas de data errada) indentados logo abaixo."""
+    largura = max(len(e) for e in EMPRESAS) + 1
+    linhas = [f"KPI — {quando:%d/%m/%Y %H:%M}"]
+    for r in resultados:
+        linhas.append(f"{r.empresa.ljust(largura)}{r.mes:02d}/{r.ano}: {r.texto}")
+        linhas.extend(f"    {d}" for d in r.detalhes)
+    return "\n".join(linhas)
+
+
+def titulo_banner(resultados):
+    """'KPI 10/2026'; com mais de um mês (virada): 'KPI set+out/2026', ou
+    'KPI dez/2026+jan/2027' na virada de ano."""
+    meses = sorted({(r.ano, r.mes) for r in resultados})
+    if len(meses) == 1:
+        ano, mes = meses[0]
+        return f"KPI {mes:02d}/{ano}"
+    anos = {ano for ano, _ in meses}
+    if len(anos) == 1:
+        return f"KPI {'+'.join(MESES_ABREV[m - 1] for _, m in meses)}/{anos.pop()}"
+    return "KPI " + "+".join(f"{MESES_ABREV[m - 1]}/{a}" for a, m in meses)
+
+
+def texto_banner(resultados):
+    """'3 OK · 1 aviso · 1 falha'."""
+    n = {nivel: sum(r.nivel == nivel for r in resultados) for nivel in ('OK', 'AVISO', 'FALHA')}
+    avisos = f"{n['AVISO']} aviso" + ("" if n['AVISO'] == 1 else "s")
+    falhas = f"{n['FALHA']} falha" + ("" if n['FALHA'] == 1 else "s")
+    return f"{n['OK']} OK · {avisos} · {falhas}"
+
+
+def _osascript(script, *args):
+    """Dispara o osascript sem esperar. start_new_session tira o processo do
+    grupo do launchd, que mataria a janela ao fim do job. Qualquer erro só vai
+    para o log: notificação nunca derruba o script nem muda o código de saída."""
+    try:
+        subprocess.Popen(
+            ["/usr/bin/osascript", "-e", script, *args],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception as e:
+        try:
+            log(f"⚠️  Falha ao chamar osascript: {e}")
+        except Exception:
+            pass
+
+
+def notificar(resultados, texto):
+    tem_falha = any(r.nivel == 'FALHA' for r in resultados)
+    _osascript(SCRIPT_JANELA, texto, "KPI — resumo da carga", "caution" if tem_falha else "note")
+    _osascript(SCRIPT_BANNER, titulo_banner(resultados), texto_banner(resultados))
+
+
+def podar_log(caminho=None, max_linhas=MAX_LINHAS_LOG):
+    """Mantém só as últimas max_linhas do log (corta as mais antigas)."""
+    caminho = caminho or LOG
+    try:
+        with open(caminho) as f:
+            linhas = f.readlines()
+        if len(linhas) > max_linhas:
+            with open(caminho, 'w') as f:
+                f.writelines(linhas[-max_linhas:])
+    except OSError as e:
+        print(f"⚠️  Não foi possível podar {caminho}: {e}")
+
+
+def finalizar(resultados, quando=None):
+    """Só no modo real: resumo no log + stdout, janela e banner, poda do log."""
+    texto = montar_resumo(resultados, quando or datetime.now())
     log("--- Resumo ---")
-    for linha in resumo:
-        log(linha)
+    log(texto)
+    print(texto)
+    notificar(resultados, texto)
     log(f"{datetime.now():%Y-%m-%d %H:%M:%S} — Concluído")
-
-    print("--- Resumo ---")
-    for linha in resumo:
-        print(linha)
+    podar_log()
 
 
 def main(argv):

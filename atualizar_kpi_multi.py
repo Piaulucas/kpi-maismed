@@ -12,6 +12,12 @@ import calendar
 import sys
 import glob
 import os
+import warnings
+
+# Aviso inofensivo do openpyxl em planilhas com área de impressão por fórmula;
+# só poluía o log. Os demais warnings continuam aparecendo.
+warnings.filterwarnings('ignore', message='Print area cannot be set to Defined name',
+                        category=UserWarning)
 
 # ── CONFIGURAÇÃO ─────────────────────────────────────────────────────────────
 EMPRESAS = {
@@ -44,6 +50,20 @@ TOLERANCIA_CONSOLIDADO = 0.05
 # rodar_kpis.sh usa este código para distinguir "planilha ainda não existe"
 # (esperado no dia 1 do mês corrente) de uma falha de verdade.
 EXIT_PLANILHA_NAO_ENCONTRADA = 2
+# Linha com data fora do mês/ano da planilha: a carga da empresa é bloqueada.
+EXIT_DATA_FORA_DO_MES = 3
+# Planilha existe mas não tem nenhum lançamento (e o banco também não tem o mês).
+EXIT_PLANILHA_VAZIA = 4
+# Lançamento com DATA preenchida mas sem PACIENTE: a carga da empresa é bloqueada.
+EXIT_LANCAMENTO_SEM_PACIENTE = 5
+# Lançamento com PACIENTE mas DATA vazia ou que não é data.
+EXIT_DATA_INVALIDA = 6
+
+# Linhas que o rodar_kpis.py extrai e mostra no resumo, sem parsear texto livre.
+PREFIXO_DETALHE = 'DETALHE: '
+
+# Linhas acima do cabeçalho da tabela em cada aba.
+LINHAS_ANTES_DO_CABECALHO = 14
 
 # ── LEITURA ───────────────────────────────────────────────────────────────────
 def coluna_km(df):
@@ -53,13 +73,30 @@ def coluna_km(df):
     raise ValueError(f"Coluna KM TOTAL não encontrada. Colunas: {list(df.columns)}")
 
 def ler_aba(planilha, aba):
-    df = pd.read_excel(planilha, sheet_name=aba, skiprows=14, usecols='B:T')
-    df['PACIENTE'] = df['PACIENTE'].astype(str).str.strip()
-    df = df[df['PACIENTE'].notna() & (df['PACIENTE'].astype(str).str.strip() != '')]
+    """Lê uma aba. Guarda em _ABA e _LINHA a aba e o número da linha no Excel
+    de cada lançamento, para as mensagens de erro apontarem onde corrigir."""
+    df = pd.read_excel(planilha, sheet_name=aba, skiprows=LINHAS_ANTES_DO_CABECALHO, usecols='B:T')
+    df['_ABA'] = aba
+    # índice 0 = primeira linha após as puladas e o cabeçalho (ambos 1-based no Excel)
+    df['_LINHA'] = df.index + LINHAS_ANTES_DO_CABECALHO + 2
+    # Filtra ANTES de qualquer conversão para string: astype(str) transformava
+    # paciente vazio no texto "nan", e linhas de total passavam pelo filtro.
+    sem_paciente = vazio(df['PACIENTE'])
+    sem_data     = vazio(df['DATA'])
+    # Sem paciente e sem data: linha de total ou em branco — descartada.
+    manter = ~(sem_paciente & sem_data)
+    df, sem_paciente = df[manter].copy(), sem_paciente[manter]
     if df.empty:
         return pd.DataFrame()
-    df['DATA'] = pd.to_datetime(df['DATA'])
+    # Paciente vazio vira '' (nunca "nan"); detalhes_sem_paciente bloqueia a carga.
+    df['PACIENTE'] = [('' if s else str(v).strip()) for v, s in zip(df['PACIENTE'], sem_paciente)]
+    # Data vazia ou que não é data vira NaT; detalhes_data_invalida bloqueia a carga.
+    df['DATA'] = pd.to_datetime(df['DATA'], errors='coerce')
     return df
+
+def vazio(serie):
+    """True onde o valor é NaN, só espaços ou o texto "nan"."""
+    return serie.map(lambda v: pd.isna(v) or (isinstance(v, str) and v.strip().lower() in ('', 'nan')))
 
 def ler_planilha(planilha):
     xl = pd.ExcelFile(planilha)
@@ -99,18 +136,55 @@ def mes_anterior(ano, mes):
     return ano, mes - 1
 
 # ── VALIDAÇÃO (puro, sem banco) ───────────────────────────────────────────────
-def validar_mes_planilha(df_total, ano, mes):
-    """Levanta ValueError se a planilha tiver linha com data fora de
-    (ano, mes). Compara ano e mês — não só o mês — para não misturar meses
-    de anos diferentes (ex.: planilha de setembro/2026 com linha de
-    setembro/2027)."""
-    fora = df_total[(df_total['DATA'].dt.year != ano) | (df_total['DATA'].dt.month != mes)]
-    if not fora.empty:
-        datas = sorted({str(d) for d in fora['DATA'].dt.date})
-        raise ValueError(
-            f"A planilha de {mes:02d}/{ano} tem {len(fora)} linha(s) com data fora do "
-            f"período: {datas}. Corrija a planilha."
-        )
+def formatar_brl(valor):
+    """8057.35 -> 'R$ 8.057,35'."""
+    if pd.isna(valor):
+        return 'R$ —'
+    return 'R$ ' + f"{float(valor):,.2f}".replace(',', '_').replace('.', ',').replace('_', '.')
+
+def _detalhe(r, paciente=None):
+    """'aba ADULTO-PED, linha 32: 07/10/2023 · MAV*** · R$ 8.057,35'.
+    O paciente vai abreviado (3 letras) porque a linha acaba em log e janela."""
+    data = f"{r['DATA']:%d/%m/%Y}" if pd.notna(r['DATA']) else 'data vazia ou inválida'
+    if paciente is None:
+        paciente = str(r['PACIENTE']).strip()[:3] + '***'
+    return (f"aba {r.get('_ABA', '?')}, linha {r.get('_LINHA', '?')}: "
+            f"{data} · {paciente} · {formatar_brl(r.get('VALOR TOTAL'))}")
+
+def detalhes_sem_paciente(df_total):
+    """Lançamentos com data (ou algo na coluna DATA) mas sem paciente."""
+    return [_detalhe(r, 'sem paciente') for _, r in df_total[df_total['PACIENTE'] == ''].iterrows()]
+
+def detalhes_data_invalida(df_total):
+    """Lançamentos com paciente mas DATA vazia ou que não é data."""
+    return [_detalhe(r) for _, r in df_total[df_total['DATA'].isna()].iterrows()]
+
+def detalhes_fora_do_mes(df_total, ano, mes):
+    """Uma linha legível por lançamento com data fora de (ano, mes)."""
+    datas = df_total['DATA']
+    fora = df_total[datas.notna() & ((datas.dt.year != ano) | (datas.dt.month != mes))]
+    return [_detalhe(r) for _, r in fora.iterrows()]
+
+def checar_planilha_vazia(conectar, chave, ano, mes):
+    """Planilha sem lançamentos: (código de saída, mensagem). Só faz SELECT —
+    nada é apagado. Se o banco já tem dias do mês, a planilha vazia é suspeita
+    (arquivo trocado/apagado) e vira falha em vez de aviso."""
+    inicio = date(ano, mes, 1)
+    fim    = date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)
+    conn = conectar()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                'SELECT COUNT(*) FROM kpi_historico '
+                'WHERE empresa = %s AND data_corte >= %s AND data_corte < %s',
+                (chave, inicio, fim)
+            )
+            dias = int(cursor.fetchone()[0])
+    finally:
+        conn.close()
+    if dias:
+        return 1, f"planilha vazia, mas o banco tem {dias} dias deste mês — verifique o arquivo"
+    return EXIT_PLANILHA_VAZIA, "planilha sem lançamentos"
 
 # ── CÁLCULO (puro, sem banco) ─────────────────────────────────────────────────
 def montar_linhas(df_adulto, df_neo):
@@ -320,24 +394,38 @@ def main(argv):
     df_adulto, df_neo = ler_planilha(PLANILHA)
     df_total = pd.concat([df_adulto, df_neo], ignore_index=True)
 
+    def conectar():
+        return psycopg2.connect(
+            host=DB_HOST, port=DB_PORT,
+            dbname=DB_NAME, user=DB_USER, password=DB_PASS
+        )
+
     if df_total.empty:
-        print(f"❌ Nenhum dado encontrado na planilha.")
-        sys.exit(1)
+        try:
+            codigo, msg = checar_planilha_vazia(conectar, chave, ano, mes)
+        except Exception as e:
+            print(f"❌ [{empresa['nome']}] planilha sem lançamentos e falha ao consultar o banco: {e}")
+            sys.exit(1)
+        print(f"{'⚠️ ' if codigo == EXIT_PLANILHA_VAZIA else '❌'} [{empresa['nome']}] {msg}")
+        sys.exit(codigo)
 
-    # Verifica datas inválidas
-    nulos = df_total[df_total['DATA'].isna()]
-    if not nulos.empty:
-        print(f"❌ {len(nulos)} linha(s) com data inválida na planilha:")
-        print(nulos[['PACIENTE', 'DATA']].to_string())
-        sys.exit(1)
-
-    # O DELETE é por mês: uma data de outro mês/ano na planilha seria
-    # inserida fora do intervalo apagado e duplicaria/contaminaria aquele mês.
-    try:
-        validar_mes_planilha(df_total, ano, mes)
-    except ValueError as e:
-        print(f"❌ {e}")
-        sys.exit(1)
+    # Cada problema bloqueia a empresa inteira em vez de pular a linha: pular
+    # esconderia faturamento. O DELETE é por mês: uma data de outro mês/ano
+    # seria inserida fora do intervalo apagado e contaminaria aquele mês.
+    verificacoes = [
+        (detalhes_sem_paciente(df_total), EXIT_LANCAMENTO_SEM_PACIENTE,
+         "lançamento(s) com data mas sem paciente"),
+        (detalhes_data_invalida(df_total), EXIT_DATA_INVALIDA,
+         "lançamento(s) com data vazia ou inválida"),
+        (detalhes_fora_do_mes(df_total, ano, mes), EXIT_DATA_FORA_DO_MES,
+         f"linha(s) com data fora de {mes:02d}/{ano}"),
+    ]
+    for detalhes, codigo, descricao in verificacoes:
+        if detalhes:
+            print(f"❌ [{empresa['nome']}] A planilha tem {len(detalhes)} {descricao}. Corrija a planilha.")
+            for d in detalhes:
+                print(f"{PREFIXO_DETALHE}{d}")
+            sys.exit(codigo)
 
     linhas = montar_linhas(df_adulto, df_neo)
 
@@ -345,10 +433,7 @@ def main(argv):
         print(f"❌ Data {reprocessar_dia} não encontrada na planilha.")
         sys.exit(1)
 
-    conn = psycopg2.connect(
-        host=DB_HOST, port=DB_PORT,
-        dbname=DB_NAME, user=DB_USER, password=DB_PASS
-    )
+    conn = conectar()
     try:
         removidas = substituir_mes(conn, chave, ano, mes, linhas)
     except Exception as e:

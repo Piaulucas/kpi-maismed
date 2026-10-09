@@ -1,23 +1,11 @@
 # Comandos — KPI Mais Med
 
 ## Atualizar banco de dados
-> Cada execução recalcula **todos os dias do mês** da planilha e substitui as linhas
-> daquele mês/empresa no banco numa única transação (se algo falhar, nada é gravado).
-> Editou um dia passado na planilha? É só rodar de novo — não precisa apagar nada antes.
 
 ### Todas as empresas
 ```bash
 cd ~/Desktop/Estudos/KPI_maismed
 python3 atualizar_kpi_multi.py maismed && python3 atualizar_kpi_multi.py alfa && python3 atualizar_kpi_multi.py humanize && python3 atualizar_kpi_multi.py sert && python3 atualizar_kpi_multi.py falcon
-```
-
-## Atualizar todas as empresas de um mês específico
-> Use para fechamento depois do dia 5 (quando `rodar_kpis.sh` já não roda mais o mês
-> anterior sozinho) ou para reprocessar um mês inteiro de propósito.
-
-```bash
-cd ~/Desktop/Estudos/KPI_maismed
-./rodar_kpis.sh --mes 9 --ano 2026
 ```
 
 ### Empresa específica
@@ -32,27 +20,15 @@ python3 atualizar_kpi_multi.py falcon
 
 ## Atualizar mês anterior (virada de mês)
 > Use quando virar o mês e precisar inserir os últimos dias do mês anterior.
-> `rodar_kpis.sh` já faz isso sozinho nos primeiros 5 dias do mês — rode os
-> comandos abaixo manualmente só se precisar reprocessar fora dessa janela.
->
-> Importante: sempre passe `--ano` junto com `--mes`. Sem `--ano` o script usa
-> o ano de hoje, que é o ano errado para o mês anterior quando ele cai no ano
-> passado (virada de ano, ver exemplo abaixo).
 
 ```bash
 cd ~/Desktop/Estudos/KPI_maismed
-python3 atualizar_kpi_multi.py maismed --mes 09 --ano 2026; python3 atualizar_kpi_multi.py alfa --mes 09 --ano 2026; python3 atualizar_kpi_multi.py humanize --mes 09 --ano 2026; python3 atualizar_kpi_multi.py sert --mes 09 --ano 2026; python3 atualizar_kpi_multi.py falcon --mes 09 --ano 2026
-```
-
-### Exemplo — virada de ano (hoje é janeiro, mês anterior é dezembro do ano passado)
-```bash
-cd ~/Desktop/Estudos/KPI_maismed
-python3 atualizar_kpi_multi.py maismed --mes 12 --ano 2026; python3 atualizar_kpi_multi.py alfa --mes 12 --ano 2026; python3 atualizar_kpi_multi.py humanize --mes 12 --ano 2026; python3 atualizar_kpi_multi.py sert --mes 12 --ano 2026; python3 atualizar_kpi_multi.py falcon --mes 12 --ano 2026
+python3 atualizar_kpi_multi.py maismed --mes 09 && python3 atualizar_kpi_multi.py alfa --mes 09 && python3 atualizar_kpi_multi.py humanize --mes 09 && python3 atualizar_kpi_multi.py sert --mes 09 && python3 atualizar_kpi_multi.py falcon --mes 09
 ```
 
 ## Reprocessar um dia específico
-> Mantido por compatibilidade: hoje equivale a rodar o mês daquela data (o mês inteiro
-> é recalculado, não só o dia). Só confere, a mais, que o dia existe na planilha.
+> Use quando corrigir um valor na planilha após já ter inserido no banco.
+> O script deleta o registro daquele dia e reinsere com os dados atuais.
 
 ```bash
 cd ~/Desktop/Estudos/KPI_maismed
@@ -65,40 +41,17 @@ python3 atualizar_kpi_multi.py maismed --reprocessar 2026-05-15
 python3 atualizar_kpi_multi.py falcon --reprocessar 2026-05-10
 ```
 
-## Agendamento (launchd — macOS)
-> `rodar_kpis.sh` roda todo dia às 15h via launchd (agent `com.piau.kpi`,
-> definido em `launchd/com.piau.kpi.plist`). Se o Mac estava dormindo às 15h,
-> o launchd dispara assim que ele acordar.
-
-Ver status (mostra PID se estiver rodando, e o código de saída da última execução):
-```bash
-launchctl print gui/$(id -u)/com.piau.kpi
+## Deletar um mês inteiro e reinserir (correção em massa)
+```sql
+-- 1. Rodar no Supabase SQL Editor
+DELETE FROM kpi_historico
+WHERE EXTRACT(YEAR FROM data_corte) = 2026
+  AND EXTRACT(MONTH FROM data_corte) = 6;
 ```
-
-Rodar agora, fora do horário agendado:
 ```bash
-launchctl kickstart -k gui/$(id -u)/com.piau.kpi
-```
-
-Desativar (para de rodar até o próximo bootstrap):
-```bash
-launchctl bootout gui/$(id -u)/com.piau.kpi
-```
-
-Reativar depois de um `bootout`:
-```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.piau.kpi.plist
-```
-
-Logs:
-- `kpi_cron.log` — saída do próprio `rodar_kpis.sh`/`atualizar_kpi_multi.py` (por empresa/mês + resumo final).
-- `kpi_launchd.log` — stdout/stderr do processo que o launchd disparou (erros de lançamento, antes do Python conseguir rodar).
-
-## Rodar os testes
-```bash
+-- 2. Reinserir via script
 cd ~/Desktop/Estudos/KPI_maismed
-python3 -m pip install -r requirements-dev.txt
-python3 -m pytest -q
+python3 atualizar_kpi_multi.py maismed && python3 atualizar_kpi_multi.py alfa && python3 atualizar_kpi_multi.py humanize && python3 atualizar_kpi_multi.py sert && python3 atualizar_kpi_multi.py falcon
 ```
 
 ## Carga histórica (uso único)
@@ -126,6 +79,27 @@ FROM kpi_historico
 WHERE empresa = 'falcon'
   AND data_corte BETWEEN '2026-05-01' AND '2026-05-29';
 ```
+
+## Status da carga automática (rodar_kpis.py)
+> A cada execução real, o resumo vai para o `kpi_cron.log` (que guarda só as últimas
+> ~2.000 linhas), aparece numa janela e num banner do macOS. Nada é apagado do banco
+> em caso de aviso ou falha: a empresa/mês com problema simplesmente não é carregada.
+
+| Status | Significado | O que fazer |
+|---|---|---|
+| `OK` | Mês da empresa recalculado e gravado. | Nada. |
+| `AVISO — planilha sem lançamentos` | A planilha existe, mas não tem nenhuma linha, e o banco também não tem dias desse mês. | Normal no começo do mês. Se já deveria ter lançamentos, confira o arquivo. |
+| `AVISO — planilha do mês ainda não criada` | Dia 1 do mês e a planilha do mês corrente ainda não existe. | Nada; criar a planilha quando começar o mês. |
+| `FALHA — planilha não encontrada` | Não existe arquivo `MM_*AA.xlsx` na pasta do ano (fora do dia 1). | Criar/renomear a planilha no OneDrive e rodar de novo. |
+| `FALHA — DATA ERRADA` | Há linha com data de outro mês/ano. As linhas abaixo dizem aba, linha do Excel, data, paciente (3 letras) e valor. | Corrigir a DATA naquela linha da planilha e rodar de novo. |
+| `FALHA — LANÇAMENTO SEM PACIENTE` | Linha com DATA (e valor) mas sem PACIENTE. Linhas sem paciente **e** sem data (totais, linhas em branco) são ignoradas. | Preencher o paciente ou apagar a linha na planilha e rodar de novo. |
+| `FALHA — DATA VAZIA OU INVÁLIDA` | Linha com paciente mas DATA vazia ou que não é data. | Preencher a DATA naquela linha e rodar de novo. |
+| `FALHA — planilha vazia, mas o banco tem N dias deste mês…` | A planilha veio vazia, mas o mês já tinha sido carregado: arquivo trocado, apagado ou corrompido. | Verificar o arquivo no OneDrive (versões anteriores). O banco não foi alterado. |
+| `FALHA — <mensagem>` | Qualquer outro erro do ETL (data inválida, banco fora do ar, soma não confere...). | Ler a mensagem e o trecho daquela empresa no `kpi_cron.log`. |
+
+Códigos de saída do `atualizar_kpi_multi.py`: `0` OK · `1` erro · `2` planilha não
+encontrada · `3` data fora do mês · `4` planilha sem lançamentos · `5` lançamento sem
+paciente · `6` data vazia ou inválida.
 
 ## Links
 - Dashboard todas as empresas: https://dashboardtodaspy-2bzkn4aywu2yji5hhpoezx.streamlit.app

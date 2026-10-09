@@ -19,7 +19,16 @@ from atualizar_kpi_multi import (
     montar_linhas,
     padrao_planilha,
     substituir_mes,
-    validar_mes_planilha,
+    EXIT_DATA_FORA_DO_MES,
+    EXIT_DATA_INVALIDA,
+    EXIT_LANCAMENTO_SEM_PACIENTE,
+    EXIT_PLANILHA_VAZIA,
+    PREFIXO_DETALHE,
+    checar_planilha_vazia,
+    detalhes_data_invalida,
+    detalhes_fora_do_mes,
+    detalhes_sem_paciente,
+    main,
 )
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -236,15 +245,16 @@ def test_mes_anterior(ano_mes, esperado):
     assert mes_anterior(*ano_mes) == esperado
 
 
-def test_validar_mes_planilha_rejeita_mesmo_mes_ano_diferente():
-    df = pd.DataFrame({'DATA': pd.to_datetime(['2026-09-05', '2027-09-06'])})
-    with pytest.raises(ValueError):
-        validar_mes_planilha(df, 2026, 9)
+def test_detalhes_fora_do_mes_rejeita_mesmo_mes_ano_diferente():
+    df = pd.DataFrame({'DATA': pd.to_datetime(['2026-09-05', '2027-09-06']),
+                       'PACIENTE': ['ANA', 'BIA'], 'VALOR TOTAL': [1.0, 2.0]})
+    assert len(detalhes_fora_do_mes(df, 2026, 9)) == 1
 
 
-def test_validar_mes_planilha_aceita_quando_tudo_bate():
-    df = pd.DataFrame({'DATA': pd.to_datetime(['2026-09-01', '2026-09-30'])})
-    validar_mes_planilha(df, 2026, 9)  # não levanta
+def test_detalhes_fora_do_mes_vazio_quando_tudo_bate():
+    df = pd.DataFrame({'DATA': pd.to_datetime(['2026-09-01', '2026-09-30']),
+                       'PACIENTE': ['ANA', 'BIA'], 'VALOR TOTAL': [1.0, 2.0]})
+    assert detalhes_fora_do_mes(df, 2026, 9) == []
 
 
 def test_encontrar_planilha_retorna_none_se_nao_existe(tmp_path):
@@ -299,3 +309,149 @@ def test_dashboards_usam_ui_compartilhada(arquivo):
 def test_ui_tira_numeros_do_kpi_calc():
     fonte = (RAIZ / 'ui.py').read_text(encoding='utf-8')
     assert 'calcular_kpis_empresa(df_emp, hoje=hoje, data_corte_ref=data_corte_ref)' in fonte
+
+
+# 6. alertas do ETL: data fora do mês e planilha vazia
+def test_detalhes_fora_do_mes_aponta_aba_linha_data_e_valor():
+    df = pd.DataFrame({
+        'PACIENTE': ['JOSE RAIMUNDO', 'MAVIE HELENA SANTANA'],
+        'DATA': pd.to_datetime(['2026-10-07', '2023-10-07']),
+        'VALOR TOTAL': [100.0, 8057.35],
+        '_ABA': ['ADULTO-PED', 'ADULTO-PED'],
+        '_LINHA': [31, 32],
+    })
+    assert detalhes_fora_do_mes(df, 2026, 10) == [
+        'aba ADULTO-PED, linha 32: 07/10/2023 · MAV*** · R$ 8.057,35'
+    ]
+
+
+def test_ler_aba_numera_linha_do_excel(monkeypatch):
+    """skiprows=14 + cabeçalho: o 1º lançamento (índice 0) é a linha 16 do Excel."""
+    import atualizar_kpi_multi as etl
+    falso = pd.DataFrame({'PACIENTE': ['A', 'B'], 'DATA': ['2026-10-01', '2026-10-02']})
+    monkeypatch.setattr(etl.pd, 'read_excel', lambda *a, **k: falso.copy())
+    df = etl.ler_aba('x.xlsx', 'ADULTO-PED')
+    assert list(df['_LINHA']) == [16, 17]
+    assert list(df['_ABA']) == ['ADULTO-PED', 'ADULTO-PED']
+
+
+def test_main_sai_com_codigo_3_e_imprime_detalhe(monkeypatch, capsys):
+    import atualizar_kpi_multi as etl
+    for var in ('DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS'):
+        monkeypatch.setenv(var, 'x')
+    monkeypatch.setattr(etl, 'encontrar_planilha', lambda *a: '/fake/10_falcon_26.xlsx')
+    adulto = pd.DataFrame({
+        'PACIENTE': ['MAVIE HELENA'], 'DATA': pd.to_datetime(['2023-10-07']),
+        'VALOR TOTAL': [8057.35], 'KM TOTAL': [10.0], '_ABA': ['ADULTO-PED'], '_LINHA': [32],
+    })
+    monkeypatch.setattr(etl, 'ler_planilha', lambda p: (adulto, pd.DataFrame()))
+    psycopg2 = pytest.importorskip('psycopg2')
+    monkeypatch.setattr(psycopg2, 'connect', lambda **k: pytest.fail('não deve conectar no banco'))
+
+    with pytest.raises(SystemExit) as e:
+        main(['atualizar_kpi_multi.py', 'falcon', '--mes', '10', '--ano', '2026'])
+    assert e.value.code == EXIT_DATA_FORA_DO_MES
+    assert f"{PREFIXO_DETALHE}aba ADULTO-PED, linha 32: 07/10/2023 · MAV*** · R$ 8.057,35" \
+        in capsys.readouterr().out.splitlines()
+
+
+class _ConexaoSelect:
+    def __init__(self, dias):
+        self.cur = _CursorFalso([(dias,)])
+        self.fechada = False
+    def cursor(self): return self.cur
+    def close(self): self.fechada = True
+
+
+@pytest.mark.parametrize('dias_no_banco, codigo_esperado', [
+    (0, EXIT_PLANILHA_VAZIA),
+    (7, 1),
+])
+def test_checar_planilha_vazia(dias_no_banco, codigo_esperado):
+    conn = _ConexaoSelect(dias_no_banco)
+    codigo, msg = checar_planilha_vazia(lambda: conn, 'alfa', 2026, 10)
+    assert codigo == codigo_esperado
+    if dias_no_banco:
+        assert msg == 'planilha vazia, mas o banco tem 7 dias deste mês — verifique o arquivo'
+    else:
+        assert msg == 'planilha sem lançamentos'
+    # só leitura: um único SELECT, nenhum DELETE
+    assert len(conn.cur.sql) == 1 and conn.cur.sql[0].lstrip().startswith('SELECT')
+    assert conn.fechada
+
+
+# 7. filtro de linhas em ler_aba (antes de qualquer conversão para string)
+def aba_crua():
+    """Como o read_excel devolve uma aba: índice 0 = linha 16 do Excel."""
+    nan = float('nan')
+    return pd.DataFrame({
+        'PACIENTE':    ['JOSE RAIMUNDO', 'MAVIE HELENA', '   ', nan,            nan,     nan],
+        'DATA':        [pd.Timestamp(2026, 10, 1), nan, pd.Timestamp(2026, 10, 2), nan, nan, 'nan'],
+        'VALOR TOTAL': [1000.0,          500.0,          300.0,  838099.24,     nan,     nan],
+        'KM TOTAL':    [10.0,            5.0,            3.0,    nan,           nan,     nan],
+    })
+    # linha 16: normal · 17: sem data · 18: sem paciente · 19: total · 20/21: em branco
+
+
+def ler_aba_falsa(monkeypatch, df):
+    import atualizar_kpi_multi as etl
+    monkeypatch.setattr(etl.pd, 'read_excel', lambda *a, **k: df.copy())
+    return etl.ler_aba('x.xlsx', 'ADULTO-PED')
+
+
+def test_ler_aba_descarta_total_e_branco_e_mantem_os_demais(monkeypatch):
+    df = ler_aba_falsa(monkeypatch, aba_crua())
+    assert list(df['_LINHA']) == [16, 17, 18]          # 19 (total), 20 e 21 descartadas
+    assert list(df['PACIENTE']) == ['JOSE RAIMUNDO', 'MAVIE HELENA', '']
+    assert 'nan' not in set(df['PACIENTE'])
+
+
+def test_ler_aba_texto_nan_nao_vira_paciente(monkeypatch):
+    df = ler_aba_falsa(monkeypatch, pd.DataFrame({
+        'PACIENTE': ['nan', 'NaN '], 'DATA': [float('nan'), pd.Timestamp(2026, 10, 3)],
+        'VALOR TOTAL': [10.0, 20.0],
+    }))
+    assert list(df['_LINHA']) == [17]                  # "nan" sem data = descartada
+    assert list(df['PACIENTE']) == ['']                # "NaN " com data = sem paciente
+
+
+def test_detalhes_dos_tres_casos_com_linha_do_excel(monkeypatch):
+    df = ler_aba_falsa(monkeypatch, aba_crua())
+    assert detalhes_sem_paciente(df) == ['aba ADULTO-PED, linha 18: 02/10/2026 · sem paciente · R$ 300,00']
+    assert detalhes_data_invalida(df) == ['aba ADULTO-PED, linha 17: data vazia ou inválida · MAV*** · R$ 500,00']
+    assert detalhes_fora_do_mes(df, 2026, 10) == []    # NaT não conta como "fora do mês"
+
+
+def test_linha_de_total_nao_entra_no_faturamento(monkeypatch):
+    df = ler_aba_falsa(monkeypatch, aba_crua())
+    normais = df[(df['PACIENTE'] != '') & df['DATA'].notna()]
+    linhas = montar_linhas(normais, pd.DataFrame())
+    assert sum(l['faturamento_dia'] for l in linhas) == pytest.approx(1000.0)
+    assert linhas[-1]['valor_consolidado'] == pytest.approx(1000.0)
+
+
+def _main_com_aba(monkeypatch, df):
+    import atualizar_kpi_multi as etl
+    for var in ('DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS'):
+        monkeypatch.setenv(var, 'x')
+    monkeypatch.setattr(etl, 'encontrar_planilha', lambda *a: '/fake/10_x_26.xlsx')
+    monkeypatch.setattr(etl, 'ler_planilha', lambda p: (df, pd.DataFrame()))
+    psycopg2 = pytest.importorskip('psycopg2')
+    monkeypatch.setattr(psycopg2, 'connect', lambda **k: pytest.fail('não deve conectar no banco'))
+    with pytest.raises(SystemExit) as e:
+        main(['atualizar_kpi_multi.py', 'falcon', '--mes', '10', '--ano', '2026'])
+    return e.value.code
+
+
+def test_main_bloqueia_lancamento_sem_paciente_com_codigo_5(monkeypatch, capsys):
+    df = ler_aba_falsa(monkeypatch, aba_crua())
+    assert _main_com_aba(monkeypatch, df) == EXIT_LANCAMENTO_SEM_PACIENTE
+    assert f"{PREFIXO_DETALHE}aba ADULTO-PED, linha 18: 02/10/2026 · sem paciente · R$ 300,00" \
+        in capsys.readouterr().out.splitlines()
+
+
+def test_main_bloqueia_data_vazia_com_codigo_6(monkeypatch, capsys):
+    df = ler_aba_falsa(monkeypatch, aba_crua().drop(index=2))   # sem a linha sem paciente
+    assert _main_com_aba(monkeypatch, df) == EXIT_DATA_INVALIDA
+    assert f"{PREFIXO_DETALHE}aba ADULTO-PED, linha 17: data vazia ou inválida · MAV*** · R$ 500,00" \
+        in capsys.readouterr().out.splitlines()
