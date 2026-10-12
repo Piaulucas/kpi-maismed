@@ -58,6 +58,9 @@ EXIT_PLANILHA_VAZIA = 4
 EXIT_LANCAMENTO_SEM_PACIENTE = 5
 # Lançamento com PACIENTE mas DATA vazia ou que não é data.
 EXIT_DATA_INVALIDA = 6
+# Lançamento sem VALOR TOTAL: planilha salva por programa que não recalcula
+# fórmulas (openpyxl etc.) — a célula tem fórmula mas nenhum valor salvo.
+EXIT_VALOR_NAO_CALCULADO = 7
 
 # Linhas que o rodar_kpis.py extrai e mostra no resumo, sem parsear texto livre.
 PREFIXO_DETALHE = 'DETALHE: '
@@ -137,10 +140,14 @@ def mes_anterior(ano, mes):
 
 # ── VALIDAÇÃO (puro, sem banco) ───────────────────────────────────────────────
 def formatar_brl(valor):
-    """8057.35 -> 'R$ 8.057,35'."""
-    if pd.isna(valor):
+    """8057.35 -> 'R$ 8.057,35'. Vazio ou não numérico -> 'R$ —'."""
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
         return 'R$ —'
-    return 'R$ ' + f"{float(valor):,.2f}".replace(',', '_').replace('.', ',').replace('_', '.')
+    if pd.isna(numero):
+        return 'R$ —'
+    return 'R$ ' + f"{numero:,.2f}".replace(',', '_').replace('.', ',').replace('_', '.')
 
 def _detalhe(r, paciente=None):
     """'aba ADULTO-PED, linha 32: 07/10/2023 · MAV*** · R$ 8.057,35'.
@@ -158,6 +165,27 @@ def detalhes_sem_paciente(df_total):
 def detalhes_data_invalida(df_total):
     """Lançamentos com paciente mas DATA vazia ou que não é data."""
     return [_detalhe(r) for _, r in df_total[df_total['DATA'].isna()].iterrows()]
+
+def msg_valor_nao_calculado(n):
+    return f"{n} lançamentos sem VALOR TOTAL calculado — abra a planilha no Excel e salve (Cmd+S)"
+
+def detalhes_valor_nao_calculado(df_total):
+    """Lançamentos (paciente + data) com VALOR TOTAL vazio/NaN -> (todos, detalhes).
+    0 numérico é válido (remoção sem cobrança). Se TODOS estão sem valor
+    (todos=True), detalhes é uma linha só com a instrução; senão, uma linha
+    por ocorrência."""
+    lancamentos = df_total[(df_total['PACIENTE'] != '') & df_total['DATA'].notna()]
+    if lancamentos.empty:
+        return False, []
+    if 'VALOR TOTAL' in lancamentos.columns:
+        sem_valor = lancamentos[vazio(lancamentos['VALOR TOTAL'])]
+    else:
+        sem_valor = lancamentos
+    if sem_valor.empty:
+        return False, []
+    if len(sem_valor) == len(lancamentos):
+        return True, [msg_valor_nao_calculado(len(sem_valor))]
+    return False, [_detalhe(r) for _, r in sem_valor.iterrows()]
 
 def detalhes_fora_do_mes(df_total, ano, mes):
     """Uma linha legível por lançamento com data fora de (ano, mes)."""
@@ -236,6 +264,10 @@ def montar_linhas(df_adulto, df_neo):
     return linhas
 
 # ── CARGA ─────────────────────────────────────────────────────────────────────
+class CargaZerada(RuntimeError):
+    """Carga nova com remoções mas faturamento 0 sobre um mês que já tem
+    faturamento no banco: nunca trocar dado com valor por dado zerado."""
+
 def substituir_mes(conn, chave, ano, mes, linhas):
     """DELETE do mês da empresa + INSERT de todas as linhas, numa transação.
     Antes do COMMIT confere SUM(faturamento_dia) == valor_consolidado da última
@@ -245,8 +277,23 @@ def substituir_mes(conn, chave, ano, mes, linhas):
     fim    = date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)
     hoje   = date.today().isoformat()
 
+    remocoes_novas    = sum(l['remocoes_adulto'] + l['remocoes_neonatal'] for l in linhas)
+    faturamento_novo  = sum(l['faturamento_dia'] for l in linhas)
+
     with conn:  # psycopg2: commit ao sair sem erro, rollback se houver exceção
         with conn.cursor() as cursor:
+            # Defesa extra além da checagem de VALOR TOTAL vazio em main(): a
+            # consulta só roda no caso suspeito (remoções > 0 e faturamento 0).
+            if remocoes_novas > 0 and faturamento_novo == 0:
+                cursor.execute(
+                    'SELECT COALESCE(SUM(faturamento_dia), 0) FROM kpi_historico '
+                    'WHERE empresa = %s AND data_corte >= %s AND data_corte < %s',
+                    (chave, inicio, fim)
+                )
+                faturamento_banco = float(cursor.fetchone()[0])
+                if faturamento_banco > 0:
+                    raise CargaZerada(msg_valor_nao_calculado(remocoes_novas))
+
             cursor.execute(
                 'DELETE FROM kpi_historico WHERE empresa = %s AND data_corte >= %s AND data_corte < %s',
                 (chave, inicio, fim)
@@ -412,6 +459,19 @@ def main(argv):
     # Cada problema bloqueia a empresa inteira em vez de pular a linha: pular
     # esconderia faturamento. O DELETE é por mês: uma data de outro mês/ano
     # seria inserida fora do intervalo apagado e contaminaria aquele mês.
+    # VALOR TOTAL vazio vem primeiro: se a planilha não foi recalculada, os
+    # demais detalhes sairiam com "R$ —" e a correção é uma só (salvar no Excel).
+    todos_sem_valor, sem_valor = detalhes_valor_nao_calculado(df_total)
+    if sem_valor:
+        if todos_sem_valor:
+            print(f"❌ [{empresa['nome']}] {sem_valor[0]}")
+        else:
+            print(f"❌ [{empresa['nome']}] A planilha tem {len(sem_valor)} lançamento(s) "
+                  f"sem VALOR TOTAL calculado. Corrija a planilha.")
+        for d in sem_valor:
+            print(f"{PREFIXO_DETALHE}{d}")
+        sys.exit(EXIT_VALOR_NAO_CALCULADO)
+
     verificacoes = [
         (detalhes_sem_paciente(df_total), EXIT_LANCAMENTO_SEM_PACIENTE,
          "lançamento(s) com data mas sem paciente"),
@@ -436,6 +496,11 @@ def main(argv):
     conn = conectar()
     try:
         removidas = substituir_mes(conn, chave, ano, mes, linhas)
+    except CargaZerada as e:
+        print(f"❌ [{empresa['nome']}] O banco já tem faturamento neste mês e a carga nova "
+              f"veio zerada — rollback, banco inalterado.")
+        print(f"{PREFIXO_DETALHE}{e}")
+        sys.exit(EXIT_VALOR_NAO_CALCULADO)
     except Exception as e:
         print(f"❌ [{empresa['nome']}] Falha — nada foi gravado: {e}")
         sys.exit(1)

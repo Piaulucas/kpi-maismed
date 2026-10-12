@@ -23,7 +23,10 @@ from atualizar_kpi_multi import (
     EXIT_DATA_INVALIDA,
     EXIT_LANCAMENTO_SEM_PACIENTE,
     EXIT_PLANILHA_VAZIA,
+    EXIT_VALOR_NAO_CALCULADO,
     PREFIXO_DETALHE,
+    CargaZerada,
+    detalhes_valor_nao_calculado,
     checar_planilha_vazia,
     detalhes_data_invalida,
     detalhes_fora_do_mes,
@@ -455,3 +458,87 @@ def test_main_bloqueia_data_vazia_com_codigo_6(monkeypatch, capsys):
     assert _main_com_aba(monkeypatch, df) == EXIT_DATA_INVALIDA
     assert f"{PREFIXO_DETALHE}aba ADULTO-PED, linha 17: data vazia ou inválida · MAV*** · R$ 500,00" \
         in capsys.readouterr().out.splitlines()
+
+
+# 8. VALOR TOTAL não calculado (fórmula sem valor salvo)
+def aba_valores(valores):
+    """Aba com 3 lançamentos válidos (paciente + data) e uma linha de total."""
+    nan = float('nan')
+    return pd.DataFrame({
+        'PACIENTE':    ['JOSE RAIMUNDO', 'MAVIE HELENA', 'ANA PAULA', nan],
+        'DATA':        [pd.Timestamp(2026, 10, d) for d in (1, 2, 3)] + [nan],
+        'VALOR TOTAL': list(valores) + [nan],
+        'KM TOTAL':    [10.0, 5.0, 3.0, nan],
+    })
+
+
+def test_main_todos_sem_valor_codigo_7_com_uma_linha(monkeypatch, capsys):
+    nan = float('nan')
+    df = ler_aba_falsa(monkeypatch, aba_valores([nan, nan, nan]))
+    assert _main_com_aba(monkeypatch, df) == EXIT_VALOR_NAO_CALCULADO
+    detalhes = [l for l in capsys.readouterr().out.splitlines() if l.startswith(PREFIXO_DETALHE)]
+    assert detalhes == [f"{PREFIXO_DETALHE}3 lançamentos sem VALOR TOTAL calculado — "
+                        f"abra a planilha no Excel e salve (Cmd+S)"]
+
+
+def test_main_alguns_sem_valor_codigo_7_com_um_detalhe_por_linha(monkeypatch, capsys):
+    nan = float('nan')
+    df = ler_aba_falsa(monkeypatch, aba_valores([1000.0, nan, '  ']))
+    assert _main_com_aba(monkeypatch, df) == EXIT_VALOR_NAO_CALCULADO
+    detalhes = [l for l in capsys.readouterr().out.splitlines() if l.startswith(PREFIXO_DETALHE)]
+    assert detalhes == [
+        f"{PREFIXO_DETALHE}aba ADULTO-PED, linha 17: 02/10/2026 · MAV*** · R$ —",
+        f"{PREFIXO_DETALHE}aba ADULTO-PED, linha 18: 03/10/2026 · ANA*** · R$ —",
+    ]
+
+
+def test_valor_zero_numerico_e_valido(monkeypatch):
+    df = ler_aba_falsa(monkeypatch, aba_valores([1000.0, 0.0, 0]))
+    assert detalhes_valor_nao_calculado(df) == (False, [])
+    # todos 0 também passa nesta checagem (a defesa do banco cuida do resto)
+    df = ler_aba_falsa(monkeypatch, aba_valores([0.0, 0.0, 0.0]))
+    assert detalhes_valor_nao_calculado(df) == (False, [])
+
+
+def test_substituir_mes_aborta_carga_zerada_sobre_mes_com_faturamento():
+    df = pd.DataFrame({
+        'PACIENTE': ['A', 'B'], 'DATA': pd.to_datetime(['2026-10-01', '2026-10-02']),
+        'VALOR TOTAL': [0.0, 0.0], 'KM TOTAL': [1.0, 2.0],
+    })
+    linhas = montar_linhas(df, pd.DataFrame())
+    conn = _ConexaoFalsa(respostas=[(15000.0,)])          # banco já tem R$ 15 mil no mês
+    with pytest.raises(CargaZerada, match='2 lançamentos sem VALOR TOTAL calculado'):
+        substituir_mes(conn, 'sert', 2026, 10, linhas)
+    assert (conn.commits, conn.rollbacks) == (0, 1)
+    assert not any('DELETE' in s or 'INSERT' in s for s in conn.cur.sql)
+
+
+def test_substituir_mes_carga_zerada_sobre_mes_vazio_segue():
+    df = pd.DataFrame({
+        'PACIENTE': ['A'], 'DATA': pd.to_datetime(['2026-10-01']),
+        'VALOR TOTAL': [0.0], 'KM TOTAL': [1.0],
+    })
+    linhas = montar_linhas(df, pd.DataFrame())
+    conn = _ConexaoFalsa(respostas=[(0.0,), (0.0,), (0.0,)])  # banco sem faturamento
+    substituir_mes(conn, 'sert', 2026, 10, linhas)
+    assert (conn.commits, conn.rollbacks) == (1, 0)
+    assert any(s.lstrip().startswith('DELETE') for s in conn.cur.sql)
+
+
+def test_main_carga_zerada_sai_com_codigo_7(monkeypatch, capsys):
+    import atualizar_kpi_multi as etl
+    df = ler_aba_falsa(monkeypatch, aba_valores([0.0, 0.0, 0.0]))
+    for var in ('DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS'):
+        monkeypatch.setenv(var, 'x')
+    monkeypatch.setattr(etl, 'encontrar_planilha', lambda *a: '/fake/10_sert_26.xlsx')
+    monkeypatch.setattr(etl, 'ler_planilha', lambda p: (df, pd.DataFrame()))
+    conn = _ConexaoFalsa(respostas=[(15000.0,)])
+    conn.close = lambda: None
+    psycopg2 = pytest.importorskip('psycopg2')
+    monkeypatch.setattr(psycopg2, 'connect', lambda **k: conn)
+    with pytest.raises(SystemExit) as e:
+        main(['atualizar_kpi_multi.py', 'sert', '--mes', '10', '--ano', '2026'])
+    assert e.value.code == EXIT_VALOR_NAO_CALCULADO
+    assert conn.rollbacks == 1
+    assert (f"{PREFIXO_DETALHE}3 lançamentos sem VALOR TOTAL calculado — "
+            f"abra a planilha no Excel e salve (Cmd+S)") in capsys.readouterr().out.splitlines()

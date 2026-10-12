@@ -155,6 +155,10 @@ DETALHE_FALCON = 'aba ADULTO-PED, linha 32: 07/10/2023 · MAV*** · R$ 8.057,35'
      ('FALHA', 'FALHA — LANÇAMENTO SEM PACIENTE', ('aba NEONATAL, linha 19: 02/10/2026 · sem paciente · R$ 300,00',))),
     (6, False, 'DETALHE: aba ADULTO-PED, linha 17: data vazia ou inválida · MAV*** · R$ 500,00\n',
      ('FALHA', 'FALHA — DATA VAZIA OU INVÁLIDA', ('aba ADULTO-PED, linha 17: data vazia ou inválida · MAV*** · R$ 500,00',))),
+    (7, False, '❌ [Sert Med] 25 lançamentos sem VALOR TOTAL calculado — abra a planilha no Excel e salve (Cmd+S)\n'
+               'DETALHE: 25 lançamentos sem VALOR TOTAL calculado — abra a planilha no Excel e salve (Cmd+S)\n',
+     ('FALHA', 'FALHA — VALORES NÃO CALCULADOS',
+      ('25 lançamentos sem VALOR TOTAL calculado — abra a planilha no Excel e salve (Cmd+S)',))),
     (1, False, '📂 x\n❌ [Alfa Saúde] planilha vazia, mas o banco tem 7 dias deste mês — verifique o arquivo\n',
      ('FALHA', 'FALHA — [Alfa Saúde] planilha vazia, mas o banco tem 7 dias deste mês — verifique o arquivo', ())),
     (1, False, 'Traceback (most recent call last):\n  ...\nKeyError: \'DATA\'\n',

@@ -40,6 +40,7 @@ from atualizar_kpi_multi import (
     EXIT_LANCAMENTO_SEM_PACIENTE,
     EXIT_PLANILHA_NAO_ENCONTRADA,
     EXIT_PLANILHA_VAZIA,
+    EXIT_VALOR_NAO_CALCULADO,
     PREFIXO_DETALHE,
     mes_anterior,
 )
@@ -163,6 +164,7 @@ def classificar(returncode, saida, pode_ser_aviso):
         EXIT_DATA_FORA_DO_MES: 'FALHA — DATA ERRADA',
         EXIT_LANCAMENTO_SEM_PACIENTE: 'FALHA — LANÇAMENTO SEM PACIENTE',
         EXIT_DATA_INVALIDA: 'FALHA — DATA VAZIA OU INVÁLIDA',
+        EXIT_VALOR_NAO_CALCULADO: 'FALHA — VALORES NÃO CALCULADOS',
     }
     if returncode in falhas_com_detalhe:
         detalhes = tuple(l[len(PREFIXO_DETALHE):] for l in saida.splitlines()

@@ -94,12 +94,13 @@ WHERE empresa = 'falcon'
 | `FALHA — DATA ERRADA` | Há linha com data de outro mês/ano. As linhas abaixo dizem aba, linha do Excel, data, paciente (3 letras) e valor. | Corrigir a DATA naquela linha da planilha e rodar de novo. |
 | `FALHA — LANÇAMENTO SEM PACIENTE` | Linha com DATA (e valor) mas sem PACIENTE. Linhas sem paciente **e** sem data (totais, linhas em branco) são ignoradas. | Preencher o paciente ou apagar a linha na planilha e rodar de novo. |
 | `FALHA — DATA VAZIA OU INVÁLIDA` | Linha com paciente mas DATA vazia ou que não é data. | Preencher a DATA naquela linha e rodar de novo. |
+| `FALHA — VALORES NÃO CALCULADOS` | Lançamento com paciente e data mas VALOR TOTAL vazio: a planilha foi salva por um programa que não recalcula fórmulas (a célula tem fórmula, mas nenhum valor salvo). Se todos estiverem sem valor, aparece uma linha só; senão, uma por lançamento. Também dispara se a carga nova vier com remoções e faturamento 0 sobre um mês que já tem faturamento no banco. VALOR TOTAL = 0 digitado continua válido. | Abrir a planilha no Excel, salvar (Cmd+S) e rodar de novo. Se só algumas linhas, preencher o VALOR TOTAL delas. |
 | `FALHA — planilha vazia, mas o banco tem N dias deste mês…` | A planilha veio vazia, mas o mês já tinha sido carregado: arquivo trocado, apagado ou corrompido. | Verificar o arquivo no OneDrive (versões anteriores). O banco não foi alterado. |
 | `FALHA — <mensagem>` | Qualquer outro erro do ETL (data inválida, banco fora do ar, soma não confere...). | Ler a mensagem e o trecho daquela empresa no `kpi_cron.log`. |
 
 Códigos de saída do `atualizar_kpi_multi.py`: `0` OK · `1` erro · `2` planilha não
 encontrada · `3` data fora do mês · `4` planilha sem lançamentos · `5` lançamento sem
-paciente · `6` data vazia ou inválida.
+paciente · `6` data vazia ou inválida · `7` VALOR TOTAL não calculado.
 
 ## Links
 - Dashboard todas as empresas: https://dashboardtodaspy-2bzkn4aywu2yji5hhpoezx.streamlit.app
